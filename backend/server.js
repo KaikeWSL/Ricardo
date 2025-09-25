@@ -56,13 +56,28 @@ app.use((req, res, next) => {
 app.use(express.static('../frontend'));
 
 // Rota de saúde
-app.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Servidor funcionando normalmente',
-    timestamp: new Date().toISOString(),
-    version: '1.0.0'
-  });
+app.get('/health', async (req, res) => {
+  try {
+    // Testar conexão com banco
+    const dbTest = await require('./config/database').query('SELECT 1 as test');
+    
+    res.json({
+      success: true,
+      message: 'Servidor funcionando normalmente',
+      timestamp: new Date().toISOString(),
+      version: '1.0.0',
+      database: 'Conectado',
+      dbTest: dbTest.rows[0]
+    });
+  } catch (error) {
+    console.error('❌ Erro no health check:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro de conexão com banco de dados',
+      timestamp: new Date().toISOString(),
+      error: error.message
+    });
+  }
 });
 
 // Aplicar rate limiting específico para login
@@ -72,8 +87,22 @@ app.use('/api/admin/login', loginLimiter);
 app.use('/api', publicRoutes);
 app.use('/api/admin', adminRoutes);
 
-// Rota catch-all para SPA (Single Page Application)
+// Rota específica para admin
+app.get('/admin', (req, res) => {
+  res.sendFile('admin.html', { root: '../frontend' });
+});
+
+// Rota catch-all para SPA (Single Page Application) - deve vir por último
 app.get('*', (req, res) => {
+  // Se for uma rota da API que não existe, retornar 404 JSON
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({
+      success: false,
+      message: 'Endpoint não encontrado'
+    });
+  }
+  
+  // Para outras rotas, servir o index.html
   res.sendFile('index.html', { root: '../frontend' });
 });
 
@@ -101,6 +130,9 @@ app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`🌍 Ambiente: ${process.env.NODE_ENV || 'development'}`);
   console.log(`📅 Iniciado em: ${new Date().toISOString()}`);
+  console.log(`🔍 DATABASE_URL configurada: ${!!process.env.DATABASE_URL}`);
+  console.log(`🔍 JWT_SECRET configurada: ${!!process.env.JWT_SECRET}`);
+  console.log(`🔍 ALLOWED_ORIGIN: ${process.env.ALLOWED_ORIGIN}`);
 });
 
 // Tratamento de erros não capturados

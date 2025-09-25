@@ -124,7 +124,12 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
 // GET /api/servicos - Listar serviços ativos
 router.get('/servicos', async (req, res) => {
   try {
+    console.log('🔍 Tentando buscar serviços...');
+    console.log('🔍 DATABASE_URL configurada:', !!process.env.DATABASE_URL);
+    
     const servicos = await pool.query('SELECT * FROM servicos WHERE ativo = true ORDER BY nome_servico');
+    
+    console.log('✅ Serviços encontrados:', servicos.rows.length);
     
     res.json({
       success: true,
@@ -132,10 +137,14 @@ router.get('/servicos', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Erro ao buscar serviços:', error);
+    console.error('❌ Erro detalhado ao buscar serviços:', error);
+    console.error('❌ Error message:', error.message);
+    console.error('❌ Error stack:', error.stack);
+    
     res.status(500).json({
       success: false,
-      message: 'Erro interno do servidor'
+      message: 'Erro interno do servidor',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Erro interno'
     });
   }
 });
