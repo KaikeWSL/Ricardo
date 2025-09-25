@@ -115,11 +115,13 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
     console.log('📅 Dia da semana:', diaSemana, '→', diaAtual);
     
     // Se não há configuração de dias de funcionamento, usar padrão (segunda a sábado)
-    const diasFuncionamento = config.dias_funcionamento 
-      ? config.dias_funcionamento.split(',') 
-      : ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+    const diasFuncionamentoBruto = config.dias_funcionamento || config.dias_semana || 'segunda,terca,quarta,quinta,sexta,sabado';
+    const diasFuncionamento = diasFuncionamentoBruto.split(',').map(d => d.trim());
     
-    console.log('🏢 Dias de funcionamento:', diasFuncionamento);
+    console.log('🏢 Dias de funcionamento configurados:', diasFuncionamentoBruto);
+    console.log('🏢 Dias de funcionamento array:', diasFuncionamento);
+    console.log('🔍 Verificando se', diaAtual, 'está em', diasFuncionamento);
+    console.log('📝 Inclui dia atual?', diasFuncionamento.includes(diaAtual));
     
     if (!diasFuncionamento.includes(diaAtual)) {
       console.log('❌ Salão fechado neste dia');
@@ -133,13 +135,27 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
 
     console.log('✅ Salão aberto, gerando horários...');
 
+    // Garantir compatibilidade com diferentes nomes de configuração
+    const horarioAbertura = config.horario_abertura || config.hora_abertura || '08:00';
+    const horarioFechamento = config.horario_fechamento || config.hora_fechamento || '18:00';
+    const intervaloInicio = config.intervalo_inicio || config.almoco_inicio || '12:00';
+    const intervaloFim = config.intervalo_fim || config.almoco_fim || '13:00';
+    const duracaoSlot = parseInt(config.duracao_slot || '30');
+    
+    console.log('🕐 Configurações aplicadas:', {
+      abertura: horarioAbertura,
+      fechamento: horarioFechamento,
+      intervalo: `${intervaloInicio}-${intervaloFim}`,
+      slot: duracaoSlot
+    });
+
     // Gerar horários baseados nas configurações
     const horariosBase = gerarHorarios(
-      config.horario_abertura || '08:00',
-      config.horario_fechamento || '18:00',
-      config.intervalo_inicio || '12:00',
-      config.intervalo_fim || '13:00',
-      parseInt(config.duracao_slot || '30')
+      horarioAbertura,
+      horarioFechamento,
+      intervaloInicio,
+      intervaloFim,
+      duracaoSlot
     );
     
     console.log('🕐 Horários base gerados:', horariosBase);
@@ -285,13 +301,27 @@ router.get('/teste-configuracao', async (req, res) => {
       config[row.nome_config] = row.valor;
     });
     
+    // Garantir compatibilidade com diferentes nomes de configuração
+    const horarioAbertura = config.horario_abertura || config.hora_abertura || '08:00';
+    const horarioFechamento = config.horario_fechamento || config.hora_fechamento || '18:00';
+    const intervaloInicio = config.intervalo_inicio || config.almoco_inicio || '12:00';
+    const intervaloFim = config.intervalo_fim || config.almoco_fim || '13:00';
+    const duracaoSlot = parseInt(config.duracao_slot || '30');
+    
+    console.log('🕐 Usando configurações:', {
+      abertura: horarioAbertura,
+      fechamento: horarioFechamento,
+      intervalo: `${intervaloInicio}-${intervaloFim}`,
+      slot: duracaoSlot
+    });
+    
     // Testar geração de horários
     const horariosGerados = gerarHorarios(
-      config.horario_abertura || '08:00',
-      config.horario_fechamento || '18:00', 
-      config.intervalo_inicio || '12:00',
-      config.intervalo_fim || '13:00',
-      parseInt(config.duracao_slot || '30')
+      horarioAbertura,
+      horarioFechamento, 
+      intervaloInicio,
+      intervaloFim,
+      duracaoSlot
     );
     
     console.log('⏰ Horários gerados:', horariosGerados);
