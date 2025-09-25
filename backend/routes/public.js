@@ -99,11 +99,19 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
       [data, 'agendado']
     );
 
+    // Buscar horários bloqueados pelo admin para a data
+    const horariosBloqueados = await pool.query(
+      'SELECT horario FROM horarios_bloqueados WHERE data = $1 AND ativo = true',
+      [data]
+    );
+
     const horariosOcupados = agendamentosExistentes.rows.map(row => row.horario);
+    const horariosAdmin = horariosBloqueados.rows.map(row => row.horario);
+    const todosHorariosIndisponiveis = [...horariosOcupados, ...horariosAdmin];
 
     // Filtrar horários disponíveis
     const horariosDisponiveis = horariosBase.filter(horario => {
-      return !horariosOcupados.some(ocupado => ocupado === horario);
+      return !todosHorariosIndisponiveis.some(indisponivel => indisponivel === horario);
     });
 
     res.json({

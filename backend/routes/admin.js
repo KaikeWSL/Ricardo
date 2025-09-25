@@ -363,4 +363,126 @@ router.get('/dashboard', verificarToken, async (req, res) => {
   }
 });
 
+// GET /api/admin/horarios-bloqueados - Listar horários bloqueados
+router.get('/horarios-bloqueados', authenticateToken, async (req, res) => {
+  try {
+    const { data } = req.query;
+    
+    let query = 'SELECT * FROM horarios_bloqueados WHERE ativo = true';
+    let params = [];
+    
+    if (data) {
+      query += ' AND data = $1';
+      params.push(data);
+    }
+    
+    query += ' ORDER BY data, horario';
+    
+    const result = await pool.query(query, params);
+    
+    res.json({
+      success: true,
+      horarios_bloqueados: result.rows
+    });
+
+  } catch (error) {
+    console.error('Erro ao buscar horários bloqueados:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// POST /api/admin/horarios-bloqueados - Bloquear horário
+router.post('/horarios-bloqueados', authenticateToken, [
+  body('data').isISO8601().withMessage('Data inválida'),
+  body('horario').matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).withMessage('Horário inválido'),
+  body('motivo').optional().trim().isLength({ max: 255 }).withMessage('Motivo muito longo')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Dados inválidos',
+        errors: errors.array()
+      });
+    }
+
+    const { data, horario, motivo } = req.body;
+
+    // Verificar se já existe agendamento para este horário
+    const agendamentoExistente = await pool.query(
+      'SELECT id FROM agendamentos WHERE data = $1 AND horario = $2 AND status = $3',
+      [data, horario, 'agendado']
+    );
+
+    if (agendamentoExistente.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Já existe um agendamento para este horário. Cancele o agendamento primeiro.'
+      });
+    }
+
+    // Bloquear o horário
+    const result = await pool.query(
+      `INSERT INTO horarios_bloqueados (data, horario, motivo, ativo) 
+       VALUES ($1, $2, $3, true) 
+       ON CONFLICT (data, horario) DO UPDATE SET 
+       motivo = $3, ativo = true, created_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [data, horario, motivo || 'Bloqueado pelo admin']
+    );
+
+    console.log('✅ Horário bloqueado:', { data, horario, motivo });
+
+    res.json({
+      success: true,
+      message: 'Horário bloqueado com sucesso',
+      horario_bloqueado: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Erro ao bloquear horário:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// DELETE /api/admin/horarios-bloqueados/:id - Desbloquear horário
+router.delete('/horarios-bloqueados/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'UPDATE horarios_bloqueados SET ativo = false WHERE id = $1 RETURNING *',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Horário bloqueado não encontrado'
+      });
+    }
+
+    console.log('✅ Horário desbloqueado:', result.rows[0]);
+
+    res.json({
+      success: true,
+      message: 'Horário desbloqueado com sucesso'
+    });
+
+  } catch (error) {
+    console.error('Erro ao desbloquear horário:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
 module.exports = router;
