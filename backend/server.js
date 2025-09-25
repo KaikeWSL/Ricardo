@@ -14,10 +14,35 @@ const adminRoutes = require('./routes/admin');
 // Middleware de segurança
 app.use(helmet());
 
-// Configurar CORS
+// Configurar CORS - Permitir múltiplas origens
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5500',
+  'https://visionary-fairy-3e00b0.netlify.app',
+  'https://ricardo-cabelereiro-cbj9.onrender.com'
+];
+
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGIN === '*' ? true : process.env.ALLOWED_ORIGIN,
-  credentials: true
+  origin: function (origin, callback) {
+    // Permitir requests sem origin (ex: Postman, mobile apps)
+    if (!origin) return callback(null, true);
+    
+    // Permitir qualquer origem em desenvolvimento
+    if (process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    
+    // Em produção, verificar lista de origens permitidas
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    // Para outras origens, permitir também (temporário para resolver CORS)
+    return callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
 // Rate limiting
