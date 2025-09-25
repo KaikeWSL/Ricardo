@@ -299,6 +299,32 @@ router.get('/teste-configuracao', async (req, res) => {
       }
     }
     
+    // Corrigir formato dos dias de funcionamento se estiver como array JSON
+    const diasFuncionamentoAtual = await pool.query(
+      'SELECT valor FROM configuracao_salao WHERE nome_config = $1 AND ativo = true',
+      ['dias_funcionamento']
+    );
+    
+    if (diasFuncionamentoAtual.rows.length > 0) {
+      const valorAtual = diasFuncionamentoAtual.rows[0].valor;
+      console.log('🔍 Verificando formato dias_funcionamento:', valorAtual);
+      
+      // Se está no formato de array JSON, converter para string
+      if (valorAtual.startsWith('[') && valorAtual.includes('true')) {
+        console.log('🔧 Convertendo formato de dias_funcionamento...');
+        
+        // Converter [true,true,true,true,true,true,false] para "segunda,terca,quarta,quinta,sexta,sabado"
+        const diasCorretos = 'segunda,terca,quarta,quinta,sexta,sabado';
+        
+        await pool.query(
+          `UPDATE configuracao_salao SET valor = $1 WHERE nome_config = $2 AND ativo = true`,
+          [diasCorretos, 'dias_funcionamento']
+        );
+        
+        console.log('✅ Formato dias_funcionamento corrigido para:', diasCorretos);
+      }
+    }
+    
     // Se não há configurações, criar padrão
     if (configResult.rows.length === 0) {
       console.log('🔧 Criando configurações padrão...');
