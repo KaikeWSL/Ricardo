@@ -1,7 +1,7 @@
 // Configuração da API
 const API_BASE_URL = window.location.hostname === 'localhost' 
     ? 'http://localhost:3000/api' 
-    : 'https://SEU-BACKEND-URL.onrender.com/api';
+    : 'https://ricardo-nnnk.onrender.com/api';
 
 // Estado da aplicação
 let authToken = localStorage.getItem('admin_token');

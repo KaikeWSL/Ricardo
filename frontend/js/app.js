@@ -1,7 +1,7 @@
 // Configuração da API
 const API_BASE_URL = window.location.hostname === 'localhost' 
     ? 'http://localhost:3000/api' 
-    : 'https://SEU-BACKEND-URL.onrender.com/api';
+    : 'https://ricardo-nnnk.onrender.com/api';
 
 // Estado da aplicação
 let servicos = [];
@@ -117,7 +117,17 @@ function setupEventListeners() {
 async function loadServices() {
     try {
         console.log('📥 Carregando serviços...');
+        console.log('🔗 URL da API:', `${API_BASE_URL}/servicos`);
+        
         const response = await fetch(`${API_BASE_URL}/servicos`);
+        
+        console.log('📡 Response status:', response.status);
+        console.log('📡 Response headers:', response.headers);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
         const data = await response.json();
         
         if (data.success) {
