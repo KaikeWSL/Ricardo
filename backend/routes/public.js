@@ -239,6 +239,81 @@ function gerarHorarios(abertura, fechamento, intervaloInicio, intervaloFim, dura
   return horarios;
 }
 
+// Rota temporária para testar/configurar horários
+router.get('/teste-configuracao', async (req, res) => {
+  try {
+    console.log('🔧 Rota de teste/configuração chamada');
+    
+    // Verificar se há configurações
+    const configResult = await pool.query(`
+      SELECT nome_config, valor FROM configuracao_salao WHERE ativo = true
+    `);
+    
+    console.log('📋 Configurações encontradas:', configResult.rows.length);
+    
+    // Se não há configurações, criar padrão
+    if (configResult.rows.length === 0) {
+      console.log('🔧 Criando configurações padrão...');
+      
+      const configuracoesDefault = [
+        ['horario_abertura', '08:00'],
+        ['horario_fechamento', '18:00'],
+        ['intervalo_inicio', '12:00'],
+        ['intervalo_fim', '13:00'],
+        ['duracao_slot', '30'],
+        ['dias_funcionamento', 'segunda,terca,quarta,quinta,sexta,sabado']
+      ];
+      
+      for (const [nome, valor] of configuracoesDefault) {
+        await pool.query(
+          `INSERT INTO configuracao_salao (nome_config, valor, ativo) VALUES ($1, $2, true)
+           ON CONFLICT (nome_config) DO UPDATE SET valor = EXCLUDED.valor, ativo = true`,
+          [nome, valor]
+        );
+      }
+      
+      console.log('✅ Configurações padrão criadas');
+    }
+    
+    // Buscar configurações atualizadas
+    const configAtualizadas = await pool.query(`
+      SELECT nome_config, valor FROM configuracao_salao WHERE ativo = true
+    `);
+    
+    const config = {};
+    configAtualizadas.rows.forEach(row => {
+      config[row.nome_config] = row.valor;
+    });
+    
+    // Testar geração de horários
+    const horariosGerados = gerarHorarios(
+      config.horario_abertura || '08:00',
+      config.horario_fechamento || '18:00', 
+      config.intervalo_inicio || '12:00',
+      config.intervalo_fim || '13:00',
+      parseInt(config.duracao_slot || '30')
+    );
+    
+    console.log('⏰ Horários gerados:', horariosGerados);
+    
+    res.json({
+      success: true,
+      message: 'Teste de configuração executado',
+      configuracoes: config,
+      horarios_gerados: horariosGerados,
+      total_horarios: horariosGerados.length
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro no teste de configuração:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro no teste',
+      error: error.message
+    });
+  }
+});
+
 // GET /api/servicos - Listar serviços ativos
 router.get('/servicos', async (req, res) => {
   try {
