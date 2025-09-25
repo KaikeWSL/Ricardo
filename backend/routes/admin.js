@@ -591,17 +591,43 @@ router.delete('/produtos/:id', verificarToken, async (req, res) => {
 router.get('/configuracoes', verificarToken, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT nome_config, valor, descricao FROM configuracao_salao WHERE ativo = true ORDER BY nome_config'
+      'SELECT nome_config, valor FROM configuracao_salao WHERE ativo = true ORDER BY nome_config'
     );
     
-    // Converter para objeto mais fácil de usar
-    const configs = {};
+    // Converter para o formato esperado pelo frontend
+    const configs = {
+      hora_abertura: '09:00',
+      hora_fechamento: '18:00',
+      almoco_inicio: '12:00',
+      almoco_fim: '13:00',
+      duracao_slot: 60,
+      dias_funcionamento: [true, true, true, true, true, true, false] // seg a dom
+    };
+    
+    // Aplicar valores do banco se existirem
     result.rows.forEach(row => {
-      configs[row.nome_config] = {
-        valor: row.valor,
-        descricao: row.descricao
-      };
+      switch (row.nome_config) {
+        case 'hora_abertura':
+        case 'hora_fechamento':
+        case 'almoco_inicio':
+        case 'almoco_fim':
+          configs[row.nome_config] = row.valor;
+          break;
+        case 'duracao_slot':
+          configs[row.nome_config] = parseInt(row.valor) || 60;
+          break;
+        case 'dias_funcionamento':
+          try {
+            configs[row.nome_config] = JSON.parse(row.valor);
+          } catch (e) {
+            // Manter valor padrão se houver erro no parse
+            console.warn('Erro ao parsear dias_funcionamento:', e);
+          }
+          break;
+      }
     });
+    
+    console.log('Enviando configurações:', configs);
     
     res.json({
       success: true,
@@ -620,24 +646,45 @@ router.get('/configuracoes', verificarToken, async (req, res) => {
 router.put('/configuracoes', verificarToken, async (req, res) => {
   try {
     const configs = req.body;
+    console.log('Recebendo configurações:', configs);
     
-    // Atualizar cada configuração
-    for (const [nome_config, valor] of Object.entries(configs)) {
-      await pool.query(
-        'UPDATE configuracao_salao SET valor = $1, updated_at = CURRENT_TIMESTAMP WHERE nome_config = $2',
-        [valor, nome_config]
-      );
+    // Mapear os dados recebidos para o formato do banco
+    const configsParaSalvar = {
+      'hora_abertura': configs.hora_abertura,
+      'hora_fechamento': configs.hora_fechamento,
+      'almoco_inicio': configs.almoco_inicio,
+      'almoco_fim': configs.almoco_fim,
+      'duracao_slot': configs.duracao_slot?.toString(),
+      'dias_funcionamento': JSON.stringify(configs.dias_funcionamento)
+    };
+    
+    console.log('Configs formatadas:', configsParaSalvar);
+    
+    // Atualizar ou inserir cada configuração
+    for (const [nome_config, valor] of Object.entries(configsParaSalvar)) {
+      if (valor !== undefined && valor !== null) {
+        await pool.query(`
+          INSERT INTO configuracao_salao (nome_config, valor, updated_at) 
+          VALUES ($1, $2, CURRENT_TIMESTAMP)
+          ON CONFLICT (nome_config) 
+          DO UPDATE SET valor = $2, updated_at = CURRENT_TIMESTAMP
+        `, [nome_config, valor]);
+        
+        console.log(`Salvou ${nome_config}: ${valor}`);
+      }
     }
     
+    console.log('✅ Configurações salvas com sucesso');
     res.json({ 
       success: true, 
       message: 'Configurações atualizadas com sucesso' 
     });
   } catch (error) {
-    console.error('Erro ao atualizar configurações:', error);
+    console.error('❌ Erro ao atualizar configurações:', error);
     res.status(500).json({ 
       success: false, 
-      error: 'Erro interno do servidor' 
+      message: 'Erro interno do servidor',
+      error: error.message
     });
   }
 });
