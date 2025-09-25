@@ -16,9 +16,20 @@ app.use(helmet());
 
 // Configurar CORS
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGIN === '*' ? true : process.env.ALLOWED_ORIGIN,
-  credentials: true
+  origin: [
+    'https://visionary-fairy-3e00b0.netlify.app',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:5500',
+    'http://127.0.0.1:5500'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+
+// Middleware adicional para CORS preflight
+app.options('*', cors());
 
 // Rate limiting
 const limiter = rateLimit({
@@ -49,6 +60,7 @@ app.use(express.urlencoded({ extended: true }));
 // Middleware para logs
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  console.log('Headers:', req.headers.origin, req.headers['user-agent']);
   next();
 });
 
@@ -59,15 +71,32 @@ app.use(express.static('../frontend'));
 app.get('/health', async (req, res) => {
   try {
     // Testar conexão com banco
-    const dbTest = await require('./config/database').query('SELECT 1 as test');
+    const pool = require('./config/database');
+    const dbTest = await pool.query('SELECT 1 as test');
+    
+    // Testar se tabela servicos existe
+    let servicosTest = null;
+    try {
+      const servicosResult = await pool.query('SELECT COUNT(*) as total FROM servicos');
+      servicosTest = `${servicosResult.rows[0].total} serviços encontrados`;
+    } catch (tableError) {
+      servicosTest = `Erro: ${tableError.message}`;
+    }
     
     res.json({
       success: true,
       message: 'Servidor funcionando normalmente',
       timestamp: new Date().toISOString(),
-      version: '1.0.0',
+      version: '1.1.0', // Incrementar para verificar se atualizou
       database: 'Conectado',
-      dbTest: dbTest.rows[0]
+      dbTest: dbTest.rows[0],
+      servicosTable: servicosTest,
+      corsFixed: true, // Indicador de que o CORS foi corrigido
+      env: {
+        database_url_exists: !!process.env.DATABASE_URL,
+        node_env: process.env.NODE_ENV,
+        jwt_secret_exists: !!process.env.JWT_SECRET
+      }
     });
   } catch (error) {
     console.error('❌ Erro no health check:', error);
@@ -75,7 +104,8 @@ app.get('/health', async (req, res) => {
       success: false,
       message: 'Erro de conexão com banco de dados',
       timestamp: new Date().toISOString(),
-      error: error.message
+      error: error.message,
+      errorDetails: error.stack
     });
   }
 });
