@@ -378,6 +378,215 @@ router.delete('/servicos/:id', verificarToken, async (req, res) => {
   }
 });
 
+// GET /api/admin/dashboard - Estatísticas do dashboard
+router.get('/dashboard', verificarToken, async (req, res) => {
+  try {
+    const hoje = new Date().toISOString().split('T')[0];
+    const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    
+    // Agendamentos hoje
+    const agendamentosHoje = await pool.query(
+      'SELECT COUNT(*) FROM agendamentos WHERE data = $1 AND status = $2',
+      [hoje, 'agendado']
+    );
+    
+    // Agendamentos este mês
+    const agendamentosMes = await pool.query(
+      'SELECT COUNT(*) FROM agendamentos WHERE data >= $1 AND status = $2',
+      [inicioMes, 'agendado']
+    );
+    
+    // Serviços ativos
+    const servicosAtivos = await pool.query(
+      'SELECT COUNT(*) FROM servicos WHERE ativo = true'
+    );
+    
+    // Produtos com estoque baixo
+    const produtosEstoqueBaixo = await pool.query(
+      'SELECT COUNT(*) FROM produtos WHERE estoque <= 5 AND ativo = true'
+    );
+    
+    res.json({
+      success: true,
+      stats: {
+        agendamentos_hoje: parseInt(agendamentosHoje.rows[0].count),
+        agendamentos_mes: parseInt(agendamentosMes.rows[0].count),
+        servicos_ativos: parseInt(servicosAtivos.rows[0].count),
+        produtos_estoque_baixo: parseInt(produtosEstoqueBaixo.rows[0].count)
+      }
+    });
+    
+  } catch (error) {
+    console.error('Erro ao buscar estatísticas:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// GET /api/admin/produtos - Listar produtos
+router.get('/produtos', verificarToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM produtos WHERE ativo = true ORDER BY nome_produto'
+    );
+
+    res.json({
+      success: true,
+      produtos: result.rows
+    });
+
+  } catch (error) {
+    console.error('Erro ao buscar produtos:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// POST /api/admin/produtos - Criar produto
+router.post('/produtos', verificarToken, [
+  body('nome_produto').notEmpty().trim().withMessage('Nome do produto é obrigatório'),
+  body('preco').isFloat({ min: 0 }).withMessage('Preço deve ser um número positivo'),
+  body('estoque').optional().isInt({ min: 0 }).withMessage('Estoque deve ser um número inteiro positivo')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Dados inválidos',
+        errors: errors.array()
+      });
+    }
+
+    const { nome_produto, preco, estoque = 0 } = req.body;
+
+    const result = await pool.query(
+      'INSERT INTO produtos (nome_produto, preco, estoque) VALUES ($1, $2, $3) RETURNING *',
+      [nome_produto, preco, estoque]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Produto criado com sucesso',
+      produto: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Erro ao criar produto:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// PUT /api/admin/produtos/:id - Atualizar produto
+router.put('/produtos/:id', verificarToken, [
+  body('nome_produto').optional().notEmpty().trim().withMessage('Nome do produto não pode estar vazio'),
+  body('preco').optional().isFloat({ min: 0 }).withMessage('Preço deve ser um número positivo'),
+  body('estoque').optional().isInt({ min: 0 }).withMessage('Estoque deve ser um número inteiro positivo')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Dados inválidos',
+        errors: errors.array()
+      });
+    }
+
+    const { id } = req.params;
+    const updates = req.body;
+
+    const fields = [];
+    const values = [];
+    let paramCount = 0;
+
+    Object.keys(updates).forEach(key => {
+      if (updates[key] !== undefined) {
+        paramCount++;
+        fields.push(`${key} = $${paramCount}`);
+        values.push(updates[key]);
+      }
+    });
+
+    if (fields.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nenhum campo para atualizar'
+      });
+    }
+
+    paramCount++;
+    values.push(id);
+
+    const query = `
+      UPDATE produtos 
+      SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = $${paramCount} 
+      RETURNING *
+    `;
+
+    const result = await pool.query(query, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Produto não encontrado'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Produto atualizado com sucesso',
+      produto: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Erro ao atualizar produto:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// DELETE /api/admin/produtos/:id - Remover produto
+router.delete('/produtos/:id', verificarToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'UPDATE produtos SET ativo = false WHERE id = $1 RETURNING *',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Produto não encontrado'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Produto removido com sucesso'
+    });
+
+  } catch (error) {
+    console.error('Erro ao remover produto:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
 // GET /api/admin/configuracoes - Obter configurações do salão
 router.get('/configuracoes', verificarToken, async (req, res) => {
   try {
