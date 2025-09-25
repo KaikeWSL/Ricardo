@@ -85,6 +85,7 @@ router.post('/agendar', validarAgendamento, async (req, res) => {
 router.get('/horarios-disponiveis/:data', async (req, res) => {
   try {
     const { data } = req.params;
+    console.log('🕒 Buscando horários para:', data);
 
     // Buscar configurações do salão
     const configResult = await pool.query(`
@@ -95,6 +96,8 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
     configResult.rows.forEach(row => {
       config[row.nome_config] = row.valor;
     });
+    
+    console.log('⚙️ Configurações encontradas:', config);
 
     // Verificar se é dia de funcionamento
     const diaSemana = new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' });
@@ -109,9 +112,17 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
     };
     
     const diaAtual = diasMap[diaSemana];
-    const diasFuncionamento = config.dias_funcionamento ? config.dias_funcionamento.split(',') : [];
+    console.log('📅 Dia da semana:', diaSemana, '→', diaAtual);
+    
+    // Se não há configuração de dias de funcionamento, usar padrão (segunda a sábado)
+    const diasFuncionamento = config.dias_funcionamento 
+      ? config.dias_funcionamento.split(',') 
+      : ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+    
+    console.log('🏢 Dias de funcionamento:', diasFuncionamento);
     
     if (!diasFuncionamento.includes(diaAtual)) {
+      console.log('❌ Salão fechado neste dia');
       return res.json({
         success: true,
         data: data,
@@ -119,6 +130,8 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
         message: 'Salão fechado neste dia'
       });
     }
+
+    console.log('✅ Salão aberto, gerando horários...');
 
     // Gerar horários baseados nas configurações
     const horariosBase = gerarHorarios(
@@ -128,12 +141,16 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
       config.intervalo_fim || '13:00',
       parseInt(config.duracao_slot || '30')
     );
+    
+    console.log('🕐 Horários base gerados:', horariosBase);
 
     // Buscar agendamentos já existentes para a data
     const agendamentosExistentes = await pool.query(
       'SELECT horario FROM agendamentos WHERE data = $1 AND status = $2',
       [data, 'agendado']
     );
+    
+    console.log('📋 Agendamentos existentes:', agendamentosExistentes.rows.length);
 
     // Buscar períodos bloqueados pelo admin para a data
     const horariosBloqueados = await pool.query(`
@@ -145,6 +162,8 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
           (data_inicio <= $1 AND (data_fim IS NULL OR data_fim >= $1))
         )
     `, [data]);
+    
+    console.log('🚫 Bloqueios encontrados:', horariosBloqueados.rows.length);
 
     const horariosOcupados = agendamentosExistentes.rows.map(row => row.horario);
     
@@ -167,11 +186,14 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
     });
 
     const todosHorariosIndisponiveis = [...horariosOcupados, ...horariosAdminBloqueados];
+    console.log('❌ Horários indisponíveis:', todosHorariosIndisponiveis);
 
     // Filtrar horários disponíveis
     const horariosDisponiveis = horariosBase.filter(horario => {
       return !todosHorariosIndisponiveis.some(indisponivel => indisponivel === horario);
     });
+    
+    console.log('✅ Horários disponíveis:', horariosDisponiveis);
 
     res.json({
       success: true,

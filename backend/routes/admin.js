@@ -806,4 +806,44 @@ router.delete('/horarios-bloqueados/:id', verificarToken, async (req, res) => {
   }
 });
 
+// POST /api/admin/configuracoes/inicializar - Criar configurações padrão
+router.post('/configuracoes/inicializar', verificarToken, async (req, res) => {
+  try {
+    console.log('🔧 Inicializando configurações padrão...');
+    
+    const configuracoesDefault = [
+      { nome_config: 'horario_abertura', valor: '08:00' },
+      { nome_config: 'horario_fechamento', valor: '18:00' },
+      { nome_config: 'intervalo_inicio', valor: '12:00' },
+      { nome_config: 'intervalo_fim', valor: '13:00' },
+      { nome_config: 'duracao_slot', valor: '30' },
+      { nome_config: 'dias_funcionamento', valor: 'segunda,terca,quarta,quinta,sexta,sabado' }
+    ];
+    
+    for (const config of configuracoesDefault) {
+      await pool.query(
+        `INSERT INTO configuracao_salao (nome_config, valor, ativo) 
+         VALUES ($1, $2, true) 
+         ON CONFLICT (nome_config) 
+         DO UPDATE SET valor = EXCLUDED.valor, ativo = true`,
+        [config.nome_config, config.valor]
+      );
+    }
+    
+    console.log('✅ Configurações padrão inicializadas');
+    
+    res.json({
+      success: true,
+      message: 'Configurações padrão inicializadas com sucesso'
+    });
+    
+  } catch (error) {
+    console.error('Erro ao inicializar configurações:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
 module.exports = router;
