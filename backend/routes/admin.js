@@ -364,7 +364,7 @@ router.get('/dashboard', verificarToken, async (req, res) => {
 });
 
 // GET /api/admin/horarios-bloqueados - Listar horários bloqueados
-router.get('/horarios-bloqueados', authenticateToken, async (req, res) => {
+router.get('/horarios-bloqueados', verificarToken, async (req, res) => {
   try {
     const { data } = req.query;
     
@@ -395,7 +395,7 @@ router.get('/horarios-bloqueados', authenticateToken, async (req, res) => {
 });
 
 // POST /api/admin/horarios-bloqueados - Bloquear horário
-router.post('/horarios-bloqueados', authenticateToken, [
+router.post('/horarios-bloqueados', verificarToken, [
   body('data').isISO8601().withMessage('Data inválida'),
   body('horario').matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).withMessage('Horário inválido'),
   body('motivo').optional().trim().isLength({ max: 255 }).withMessage('Motivo muito longo')
@@ -453,7 +453,7 @@ router.post('/horarios-bloqueados', authenticateToken, [
 });
 
 // DELETE /api/admin/horarios-bloqueados/:id - Desbloquear horário
-router.delete('/horarios-bloqueados/:id', authenticateToken, async (req, res) => {
+router.delete('/horarios-bloqueados/:id', verificarToken, async (req, res) => {
   try {
     const { id } = req.params;
 
