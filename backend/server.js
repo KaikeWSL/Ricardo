@@ -7,6 +7,9 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Configurar trust proxy para Render.com
+app.set('trust proxy', true);
+
 // Importar rotas
 const publicRoutes = require('./routes/public');
 const adminRoutes = require('./routes/admin');
