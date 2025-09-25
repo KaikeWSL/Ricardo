@@ -267,6 +267,38 @@ router.get('/teste-configuracao', async (req, res) => {
     
     console.log('📋 Configurações encontradas:', configResult.rows.length);
     
+    // Corrigir nomes de configurações se necessário
+    const configsParaCorrigir = [
+      { antigo: 'hora_abertura', novo: 'horario_abertura' },
+      { antigo: 'hora_fechamento', novo: 'horario_fechamento' },
+      { antigo: 'almoco_inicio', novo: 'intervalo_inicio' },
+      { antigo: 'almoco_fim', novo: 'intervalo_fim' }
+    ];
+    
+    for (const { antigo, novo } of configsParaCorrigir) {
+      const configAntiga = await pool.query(
+        'SELECT valor FROM configuracao_salao WHERE nome_config = $1 AND ativo = true',
+        [antigo]
+      );
+      
+      if (configAntiga.rows.length > 0) {
+        console.log(`🔄 Migrando ${antigo} → ${novo}: ${configAntiga.rows[0].valor}`);
+        
+        // Criar/atualizar com nome correto
+        await pool.query(
+          `INSERT INTO configuracao_salao (nome_config, valor, ativo) VALUES ($1, $2, true)
+           ON CONFLICT (nome_config) DO UPDATE SET valor = EXCLUDED.valor, ativo = true`,
+          [novo, configAntiga.rows[0].valor]
+        );
+        
+        // Desativar o antigo
+        await pool.query(
+          'UPDATE configuracao_salao SET ativo = false WHERE nome_config = $1',
+          [antigo]
+        );
+      }
+    }
+    
     // Se não há configurações, criar padrão
     if (configResult.rows.length === 0) {
       console.log('🔧 Criando configurações padrão...');
