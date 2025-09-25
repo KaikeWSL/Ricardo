@@ -86,12 +86,48 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
   try {
     const { data } = req.params;
 
-    // Horários de funcionamento (8h às 18h, intervalos de 30min)
-    const horariosBase = [
-      '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
-      '11:00', '11:30', '14:00', '14:30', '15:00', '15:30',
-      '16:00', '16:30', '17:00', '17:30'
-    ];
+    // Buscar configurações do salão
+    const configResult = await pool.query(`
+      SELECT nome_config, valor FROM configuracao_salao WHERE ativo = true
+    `);
+    
+    const config = {};
+    configResult.rows.forEach(row => {
+      config[row.nome_config] = row.valor;
+    });
+
+    // Verificar se é dia de funcionamento
+    const diaSemana = new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' });
+    const diasMap = {
+      'segunda-feira': 'segunda',
+      'terça-feira': 'terca',
+      'quarta-feira': 'quarta',
+      'quinta-feira': 'quinta',
+      'sexta-feira': 'sexta',
+      'sábado': 'sabado',
+      'domingo': 'domingo'
+    };
+    
+    const diaAtual = diasMap[diaSemana];
+    const diasFuncionamento = config.dias_funcionamento ? config.dias_funcionamento.split(',') : [];
+    
+    if (!diasFuncionamento.includes(diaAtual)) {
+      return res.json({
+        success: true,
+        data: data,
+        horarios_disponiveis: [],
+        message: 'Salão fechado neste dia'
+      });
+    }
+
+    // Gerar horários baseados nas configurações
+    const horariosBase = gerarHorarios(
+      config.horario_abertura || '08:00',
+      config.horario_fechamento || '18:00',
+      config.intervalo_inicio || '12:00',
+      config.intervalo_fim || '13:00',
+      parseInt(config.duracao_slot || '30')
+    );
 
     // Buscar agendamentos já existentes para a data
     const agendamentosExistentes = await pool.query(
@@ -99,15 +135,38 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
       [data, 'agendado']
     );
 
-    // Buscar horários bloqueados pelo admin para a data
-    const horariosBloqueados = await pool.query(
-      'SELECT horario FROM horarios_bloqueados WHERE data = $1 AND ativo = true',
-      [data]
-    );
+    // Buscar períodos bloqueados pelo admin para a data
+    const horariosBloqueados = await pool.query(`
+      SELECT horario_inicio, horario_fim, data_fim 
+      FROM horarios_bloqueados 
+      WHERE ativo = true 
+        AND (
+          (data_inicio = $1) OR 
+          (data_inicio <= $1 AND (data_fim IS NULL OR data_fim >= $1))
+        )
+    `, [data]);
 
     const horariosOcupados = agendamentosExistentes.rows.map(row => row.horario);
-    const horariosAdmin = horariosBloqueados.rows.map(row => row.horario);
-    const todosHorariosIndisponiveis = [...horariosOcupados, ...horariosAdmin];
+    
+    // Verificar bloqueios de período
+    const horariosAdminBloqueados = [];
+    horariosBloqueados.rows.forEach(bloqueio => {
+      if (bloqueio.horario_fim) {
+        // Período com horário de retorno
+        const inicio = bloqueio.horario_inicio;
+        const fim = bloqueio.horario_fim;
+        horariosBase.forEach(horario => {
+          if (horario >= inicio && horario < fim) {
+            horariosAdminBloqueados.push(horario);
+          }
+        });
+      } else {
+        // Bloqueio de horário único
+        horariosAdminBloqueados.push(bloqueio.horario_inicio);
+      }
+    });
+
+    const todosHorariosIndisponiveis = [...horariosOcupados, ...horariosAdminBloqueados];
 
     // Filtrar horários disponíveis
     const horariosDisponiveis = horariosBase.filter(horario => {
@@ -128,6 +187,35 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
     });
   }
 });
+
+// Função auxiliar para gerar horários
+function gerarHorarios(abertura, fechamento, intervaloInicio, intervaloFim, duracaoSlot) {
+  const horarios = [];
+  
+  const [aberturaH, aberturaM] = abertura.split(':').map(n => parseInt(n));
+  const [fechamentoH, fechamentoM] = fechamento.split(':').map(n => parseInt(n));
+  const [intervaloInicioH, intervaloInicioM] = intervaloInicio.split(':').map(n => parseInt(n));
+  const [intervaloFimH, intervaloFimM] = intervaloFim.split(':').map(n => parseInt(n));
+  
+  const aberturaMinutos = aberturaH * 60 + aberturaM;
+  const fechamentoMinutos = fechamentoH * 60 + fechamentoM;
+  const intervaloInicioMinutos = intervaloInicioH * 60 + intervaloInicioM;
+  const intervaloFimMinutos = intervaloFimH * 60 + intervaloFimM;
+  
+  for (let minutos = aberturaMinutos; minutos < fechamentoMinutos; minutos += duracaoSlot) {
+    // Pular horário de almoço
+    if (minutos >= intervaloInicioMinutos && minutos < intervaloFimMinutos) {
+      continue;
+    }
+    
+    const horas = Math.floor(minutos / 60);
+    const mins = minutos % 60;
+    const horarioFormatado = `${horas.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+    horarios.push(horarioFormatado);
+  }
+  
+  return horarios;
+}
 
 // GET /api/servicos - Listar serviços ativos
 router.get('/servicos', async (req, res) => {
