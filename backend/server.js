@@ -80,6 +80,86 @@ app.use((req, res, next) => {
 // Servir arquivos estáticos do frontend
 app.use(express.static('../frontend'));
 
+// Rota temporária para atualizar credenciais admin (REMOVER DEPOIS)
+app.get('/update-admin-secret', async (req, res) => {
+  try {
+    const bcrypt = require('bcrypt');
+    const pool = require('./config/database');
+    
+    console.log('🔐 Atualizando credenciais do admin...');
+    
+    // Primeiro, limpar admin antigo
+    await pool.query('DELETE FROM admin WHERE usuario IN ($1, $2)', ['admin', 'Ricardo']);
+    
+    // Gerar hash da nova senha
+    const newPassword = 'Ricardo123';
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+    
+    console.log('Hash gerado:', hashedPassword);
+    
+    // Inserir novo admin
+    await pool.query(
+        `INSERT INTO admin (usuario, senha_hash) VALUES ($1, $2)`,
+        ['Ricardo', hashedPassword]
+    );
+    
+    // Verificar se foi inserido corretamente
+    const check = await pool.query('SELECT usuario, senha_hash FROM admin WHERE usuario = $1', ['Ricardo']);
+    
+    res.json({
+      success: true,
+      message: 'Credenciais atualizadas com sucesso!',
+      credentials: {
+        usuario: 'Ricardo',
+        senha: 'Ricardo123'
+      },
+      hash_generated: hashedPassword,
+      admin_found: check.rows.length > 0,
+      admin_data: check.rows[0] || null
+    });
+    
+    console.log('✅ Credenciais atualizadas: Ricardo/Ricardo123');
+    console.log('Hash usado:', hashedPassword);
+    
+  } catch (error) {
+    console.error('❌ Erro ao atualizar credenciais:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao atualizar credenciais',
+      error: error.message
+    });
+  }
+});
+
+// Rota para verificar admin atual (REMOVER DEPOIS)
+app.get('/check-admin', async (req, res) => {
+  try {
+    const pool = require('./config/database');
+    
+    const admins = await pool.query('SELECT id, usuario, senha_hash, created_at FROM admin ORDER BY id');
+    
+    res.json({
+      success: true,
+      total_admins: admins.rows.length,
+      admins: admins.rows.map(admin => ({
+        id: admin.id,
+        usuario: admin.usuario,
+        senha_hash: admin.senha_hash.substring(0, 20) + '...',
+        created_at: admin.created_at
+      }))
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao verificar admin:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao verificar admin',
+      error: error.message
+    });
+  }
+});
+
 // Rota de saúde
 app.get('/health', async (req, res) => {
   try {
