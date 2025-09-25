@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Área Administrativa - Ricardo Cabelereiro</title>
+    <meta name="description" content="Painel administrativo do sistema de agendamentos do Ricardo Cabelereiro">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/admin.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔐</text></svg>">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="login-screen" class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <h1>🔐 Área Administrativa</h1>
+                <p>Ricardo Cabelereiro</p>
+            </div>
+            
+            <div id="login-alert"></div>
+            
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="usuario">Usuário</label>
+                    <input type="text" id="usuario" name="usuario" required autocomplete="username" 
+                           placeholder="Digite seu usuário">
+                </div>
+                
+                <div class="form-group">
+                    <label for="senha">Senha</label>
+                    <input type="password" id="senha" name="senha" required autocomplete="current-password"
+                           placeholder="Digite sua senha">
+                </div>
+                
+                <div class="loading" id="login-loading">
+                    <div class="spinner"></div>
+                    <p>Verificando credenciais...</p>
+                </div>
+                
+                <button type="submit" class="btn btn-primary" id="login-btn">
+                    Entrar
+                </button>
+            </form>
+            
+            <div style="text-align: center; margin-top: 2rem; color: #7f8c8d; font-size: 0.9rem;">
+                <p>👤 Usuário padrão: <strong>admin</strong></p>
+                <p>🔑 Senha padrão: <strong>admin123</strong></p>
+                <p style="font-size: 0.8rem; margin-top: 1rem; opacity: 0.8;">
+                    ⚠️ Altere estas credenciais após o primeiro acesso
+                </p>
+            </div>
+            
+            <div style="text-align: center; margin-top: 1.5rem;">
+                <a href="index.html" class="btn btn-secondary">
+                    ← Voltar ao Site
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div id="admin-dashboard" class="admin-layout" style="display: none;">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>📊 Admin Panel</h2>
+                <p>Ricardo Cabelereiro</p>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <ul>
+                    <li>
+                        <a href="#" data-section="dashboard" class="nav-link active">
+                            <span class="nav-icon">📊</span>
+                            Dashboard
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" data-section="agendamentos" class="nav-link">
+                            <span class="nav-icon">📅</span>
+                            Agendamentos
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" data-section="servicos" class="nav-link">
+                            <span class="nav-icon">✂️</span>
+                            Serviços
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" data-section="produtos" class="nav-link">
+                            <span class="nav-icon">🛍️</span>
+                            Produtos
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <button class="logout-btn" onclick="logout()">
+                    🚪 Sair
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content-admin">
+            <header class="admin-header">
+                <button class="mobile-menu-btn" onclick="toggleSidebar()">
+                    ☰
+                </button>
+                
+                <div class="admin-title">
+                    <h1 id="page-title">Dashboard</h1>
+                    <p id="page-subtitle">Visão geral do sistema</p>
+                </div>
+                
+                <div>
+                    <span style="color: #7f8c8d;">Logado como: </span>
+                    <strong id="admin-user"></strong>
+                </div>
+            </header>
+
+            <!-- Dashboard Section -->
+            <section id="section-dashboard" class="content-section active">
+                <div class="dashboard-cards" id="dashboard-cards">
+                    <div class="dashboard-card">
+                        <h3 id="agendamentos-hoje">-</h3>
+                        <p>Agendamentos Hoje</p>
+                    </div>
+                    <div class="dashboard-card success">
+                        <h3 id="agendamentos-mes">-</h3>
+                        <p>Agendamentos Este Mês</p>
+                    </div>
+                    <div class="dashboard-card warning">
+                        <h3 id="servicos-ativos">-</h3>
+                        <p>Serviços Ativos</p>
+                    </div>
+                    <div class="dashboard-card danger">
+                        <h3 id="produtos-estoque-baixo">-</h3>
+                        <p>Produtos Estoque Baixo</p>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3>📅 Próximos Agendamentos</h3>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Cliente</th>
+                                    <th>Serviço</th>
+                                    <th>Data</th>
+                                    <th>Horário</th>
+                                    <th>Telefone</th>
+                                </tr>
+                            </thead>
+                            <tbody id="proximos-agendamentos">
+                                <tr>
+                                    <td colspan="5" class="table-loading">
+                                        <div class="spinner"></div>
+                                        Carregando agendamentos...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Agendamentos Section -->
+            <section id="section-agendamentos" class="content-section">
+                <div class="section-header">
+                    <h2>📅 Gerenciar Agendamentos</h2>
+                    <button class="btn btn-info btn-sm" onclick="loadAgendamentos()">
+                        🔄 Atualizar
+                    </button>
+                </div>
+                
+                <!-- Filtros -->
+                <div class="filters">
+                    <div class="filter-group">
+                        <label for="filter-data-inicio">Data Início</label>
+                        <input type="date" id="filter-data-inicio">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filter-data-fim">Data Fim</label>
+                        <input type="date" id="filter-data-fim">
+                    </div>
+                    <div class="filter-group">
+                        <label for="filter-status">Status</label>
+                        <select id="filter-status">
+                            <option value="">Todos</option>
+                            <option value="agendado">Agendado</option>
+                            <option value="concluido">Concluído</option>
+                            <option value="cancelado">Cancelado</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <button class="btn btn-primary" onclick="loadAgendamentos()" style="margin-top: 1.5rem;">
+                            🔍 Filtrar
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Cliente</th>
+                                <th>Telefone</th>
+                                <th>Serviço</th>
+                                <th>Data</th>
+                                <th>Horário</th>
+                                <th>Status</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="agendamentos-table">
+                            <tr>
+                                <td colspan="8" class="table-loading">
+                                    <div class="spinner"></div>
+                                    Carregando agendamentos...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Serviços Section -->
+            <section id="section-servicos" class="content-section">
+                <div class="section-header">
+                    <h2>✂️ Gerenciar Serviços</h2>
+                    <button class="btn btn-info btn-sm" onclick="loadServicos()">
+                        🔄 Atualizar
+                    </button>
+                </div>
+                
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nome do Serviço</th>
+                                <th>Preço</th>
+                                <th>Duração (min)</th>
+                                <th>Status</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="servicos-table">
+                            <tr>
+                                <td colspan="6" class="table-loading">
+                                    <div class="spinner"></div>
+                                    Carregando serviços...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Produtos Section -->
+            <section id="section-produtos" class="content-section">
+                <div class="section-header">
+                    <h2>🛍️ Gerenciar Produtos</h2>
+                    <button class="btn btn-info btn-sm" onclick="loadProdutos()">
+                        🔄 Atualizar
+                    </button>
+                </div>
+                
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nome do Produto</th>
+                                <th>Estoque</th>
+                                <th>Preço</th>
+                                <th>Status</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="produtos-table">
+                            <tr>
+                                <td colspan="6" class="table-loading">
+                                    <div class="spinner"></div>
+                                    Carregando produtos...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal de Edição -->
+    <div id="edit-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Editar Item</h3>
+                <button class="close-modal" onclick="closeModal()">&times;</button>
+            </div>
+            
+            <div id="modal-alert"></div>
+            
+            <form id="edit-form">
+                <div id="form-fields">
+                    <!-- Campos serão inseridos dinamicamente -->
+                </div>
+                
+                <div class="loading" id="modal-loading">
+                    <div class="spinner"></div>
+                    <p>Salvando alterações...</p>
+                </div>
+                
+                <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">
+                        💾 Salvar
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()" style="flex: 1;">
+                        ❌ Cancelar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/admin.js"></script>
+</body>
+</html>

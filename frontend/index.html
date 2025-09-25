@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ricardo Cabelereiro - Salão de Beleza</title>
+    <meta name="description" content="Agende seu horário no Ricardo Cabelereiro. Serviços profissionais de corte, barba, hidratação e muito mais.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✂️</text></svg>">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <h1>Ricardo Cabelereiro</h1>
+                </div>
+                <nav>
+                    <ul class="nav-links">
+                        <li><a href="#inicio" class="active">Início</a></li>
+                        <li><a href="#servicos">Serviços</a></li>
+                        <li><a href="#agendamento">Agendar</a></li>
+                        <li><a href="#contato">Contato</a></li>
+                        <li><a href="admin.html">Área Administrativa</a></li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Hero Section -->
+            <section id="inicio" class="hero">
+                <h2>Bem-vindo ao Ricardo Cabelereiro</h2>
+                <p>Experiência profissional em cortes, barbas e cuidados capilares. Agende seu horário online e desfrute de um atendimento personalizado.</p>
+            </section>
+
+            <!-- Cards Container -->
+            <div class="cards-container">
+                <!-- Card de Serviços -->
+                <div class="card" id="servicos">
+                    <h3>
+                        <span class="card-icon">✂️</span>
+                        Nossos Serviços
+                    </h3>
+                    <div class="services-grid" id="services-list">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p>Carregando serviços...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card de Agendamento -->
+                <div class="card" id="agendamento">
+                    <h3>
+                        <span class="card-icon">📅</span>
+                        Agendar Horário
+                    </h3>
+                    
+                    <!-- Alertas -->
+                    <div id="alert-container"></div>
+
+                    <!-- Formulário de Agendamento -->
+                    <form id="booking-form">
+                        <div class="form-group">
+                            <label for="nome_cliente">Nome Completo *</label>
+                            <input type="text" id="nome_cliente" name="nome_cliente" required maxlength="100" 
+                                   placeholder="Digite seu nome completo">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="telefone">Telefone *</label>
+                            <input type="tel" id="telefone" name="telefone" required 
+                                   placeholder="(11) 99999-9999" pattern="\(\d{2}\)\s\d{4,5}-\d{4}">
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="data">Data do Agendamento *</label>
+                                <input type="date" id="data" name="data" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="servico_id">Serviço *</label>
+                                <select id="servico_id" name="servico_id" required>
+                                    <option value="">Selecione um serviço</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Horários Disponíveis *</label>
+                            <div class="time-slots" id="time-slots">
+                                <p style="text-align: center; color: #666; grid-column: 1 / -1; padding: 1rem;">
+                                    Selecione uma data para ver os horários disponíveis
+                                </p>
+                            </div>
+                            <input type="hidden" id="horario" name="horario" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="observacoes">Observações (opcional)</label>
+                            <textarea id="observacoes" name="observacoes" rows="3" maxlength="500"
+                                      placeholder="Alguma observação especial para seu atendimento?"></textarea>
+                        </div>
+
+                        <div class="loading" id="booking-loading">
+                            <div class="spinner"></div>
+                            <p>Processando seu agendamento...</p>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" id="submit-btn">
+                            Confirmar Agendamento
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer" id="contato">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>Ricardo Cabelereiro</h4>
+                    <p>Profissional em cuidados capilares e estética masculina e feminina.</p>
+                </div>
+                
+                <div class="footer-section">
+                    <h4>Horário de Funcionamento</h4>
+                    <p>Segunda à Sexta: 8h às 18h</p>
+                    <p>Sábado: 8h às 16h</p>
+                    <p>Domingo: Fechado</p>
+                </div>
+                
+                <div class="footer-section">
+                    <h4>Contato</h4>
+                    <p>📞 (11) 99999-9999</p>
+                    <p>📧 contato@ricardocabelereiro.com</p>
+                    <p>📍 Rua Example, 123 - São Paulo</p>
+                </div>
+            </div>
+            
+            <hr style="border: none; height: 1px; background: rgba(255,255,255,0.2); margin: 2rem 0;">
+            
+            <p>&copy; 2025 Ricardo Cabelereiro. Todos os direitos reservados.</p>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="js/app.js"></script>
+</body>
+</html>
