@@ -6,6 +6,19 @@ const { body, validationResult } = require('express-validator');
 
 const router = express.Router();
 
+// Função para obter data e hora do Brasil (UTC-3)
+function getBrazilDateTime() {
+  const now = new Date();
+  const brasilOffset = -3 * 60; // UTC-3 em minutos
+  const nowBrasil = new Date(now.getTime() + (brasilOffset * 60000));
+  
+  return {
+    date: nowBrasil.toISOString().split('T')[0],
+    time: nowBrasil.toTimeString().split(' ')[0].substring(0, 5),
+    fullDate: nowBrasil
+  };
+}
+
 // Middleware para verificar JWT
 const verificarToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -134,10 +147,9 @@ router.get('/agendamentos', verificarToken, async (req, res) => {
     const { data, status } = req.query;
     
     // Primeiro, atualizar agendamentos que já passaram para "atrasado"
-    const now = new Date();
-    const nowBrasilia = new Date(now.toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
-    const currentDate = nowBrasilia.toISOString().split('T')[0];
-    const currentTime = nowBrasilia.toTimeString().split(' ')[0].substring(0, 5);
+    const brazilNow = getBrazilDateTime();
+    
+    console.log(`🕒 Verificando agendamentos atrasados - Data atual Brasil: ${brazilNow.date} ${brazilNow.time}`);
     
     await pool.query(`
       UPDATE agendamentos 
@@ -147,7 +159,7 @@ router.get('/agendamentos', verificarToken, async (req, res) => {
         data < $1 
         OR (data = $1 AND horario < $2)
       )
-    `, [currentDate, currentTime]);
+    `, [brazilNow.date, brazilNow.time]);
     
     let query = `
       SELECT a.*, s.nome_servico, s.preco, s.duracao 
@@ -397,8 +409,12 @@ router.delete('/servicos/:id', verificarToken, async (req, res) => {
 // GET /api/admin/dashboard - Estatísticas do dashboard
 router.get('/dashboard', verificarToken, async (req, res) => {
   try {
-    const hoje = new Date().toISOString().split('T')[0];
-    const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    // Usar timezone do Brasil consistentemente
+    const brazilNow = getBrazilDateTime();
+    const hoje = brazilNow.date;
+    const inicioMes = new Date(brazilNow.fullDate.getFullYear(), brazilNow.fullDate.getMonth(), 1).toISOString().split('T')[0];
+    
+    console.log(`📊 Dashboard - Data Brasil: ${hoje}`);
     
     // Agendamentos hoje
     const agendamentosHoje = await pool.query(

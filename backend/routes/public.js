@@ -3,6 +3,19 @@ const { body, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const router = express.Router();
 
+// Função utilitária para obter data/hora do Brasil (UTC-3)
+function getBrazilDateTime() {
+  const now = new Date();
+  const brasilOffset = -3 * 60; // UTC-3 em minutos
+  const nowBrasil = new Date(now.getTime() + (brasilOffset * 60000));
+  
+  return {
+    date: nowBrasil.toISOString().split('T')[0],
+    time: nowBrasil.toISOString().split('T')[1].split('.')[0],
+    fullDate: nowBrasil
+  };
+}
+
 // Validações para agendamento
 const validarAgendamento = [
   body('nome_cliente').trim().isLength({ min: 2, max: 100 }).withMessage('Nome deve ter entre 2 e 100 caracteres'),
@@ -102,7 +115,8 @@ router.post('/agendar', validarAgendamento, async (req, res) => {
 
     // Verificar se a data não é no passado (com margem de 15 minutos)
     const dataAgendamento = new Date(data + 'T' + horario);
-    const agora = new Date();
+    const brazilNow = getBrazilDateTime();
+    const agora = brazilNow.fullDate;
     const margemMinutos = 15; // Permitir agendamento até 15 minutos no passado
     const agoraComMargem = new Date(agora.getTime() - margemMinutos * 60 * 1000);
     
@@ -513,7 +527,11 @@ router.get('/teste-configuracao', async (req, res) => {
 // Rota de debug para verificar estado das tabelas
 router.get('/debug-tabelas/:data?', async (req, res) => {
   try {
-    const data = req.params.data || new Date().toISOString().split('T')[0];
+    // Usar timezone do Brasil
+    const brazilNow = getBrazilDateTime();
+    const dataDefault = brazilNow.date;
+    
+    const data = req.params.data || dataDefault;
     console.log('🔍 DEBUG - Verificando tabelas para data:', data);
     
     // 1. Verificar configurações
@@ -618,7 +636,12 @@ router.get('/servicos', async (req, res) => {
 router.get('/debug-agendamentos/:data?', async (req, res) => {
   try {
     const { data } = req.params;
-    const dataFilter = data || new Date().toISOString().split('T')[0];
+    
+    // Usar timezone do Brasil
+    const brazilNow = getBrazilDateTime();
+    const dataDefault = brazilNow.date;
+    
+    const dataFilter = data || dataDefault;
     
     console.log('🔍 Debug: Verificando agendamentos para', dataFilter);
     
@@ -664,7 +687,7 @@ router.get('/debug-agendamentos/:data?', async (req, res) => {
       })),
       bloqueios: bloqueios.rows,
       servicos: servicosMap,
-      timestamp: new Date().toISOString()
+      timestamp: getBrazilDateTime().fullDate.toISOString()
     });
     
   } catch (error) {
