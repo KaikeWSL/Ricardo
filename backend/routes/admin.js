@@ -133,6 +133,22 @@ router.get('/agendamentos', verificarToken, async (req, res) => {
   try {
     const { data, status } = req.query;
     
+    // Primeiro, atualizar agendamentos que já passaram para "atrasado"
+    const now = new Date();
+    const nowBrasilia = new Date(now.toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
+    const currentDate = nowBrasilia.toISOString().split('T')[0];
+    const currentTime = nowBrasilia.toTimeString().split(' ')[0].substring(0, 5);
+    
+    await pool.query(`
+      UPDATE agendamentos 
+      SET status = 'atrasado', updated_at = CURRENT_TIMESTAMP 
+      WHERE status = 'agendado' 
+      AND (
+        data < $1 
+        OR (data = $1 AND horario < $2)
+      )
+    `, [currentDate, currentTime]);
+    
     let query = `
       SELECT a.*, s.nome_servico, s.preco, s.duracao 
       FROM agendamentos a

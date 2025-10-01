@@ -5,7 +5,7 @@
 
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
-const pool = require('./db');
+const pool = require('./config/database');
 
 class SecuritySetup {
     constructor() {
