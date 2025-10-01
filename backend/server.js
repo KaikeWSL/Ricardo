@@ -2,10 +2,12 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const SecuritySetup = require('./security-setup');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const securitySetup = new SecuritySetup();
 
 // Configurar trust proxy para Render.com
 app.set('trust proxy', true);
@@ -13,6 +15,7 @@ app.set('trust proxy', true);
 // Importar rotas
 const publicRoutes = require('./routes/public');
 const adminRoutes = require('./routes/admin');
+const servicosRoutes = require('./routes/servicos');
 
 // Middleware de segurança
 app.use(helmet());
@@ -21,7 +24,7 @@ app.use(helmet());
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5500',
-  'https://visionary-fairy-3e00b0.netlify.app',
+  'ricardocabelereiro.netlify.app',
   'https://ricardo-cabelereiro-cbj9.onrender.com'
 ];
 
@@ -83,82 +86,127 @@ app.use((req, res, next) => {
 // Servir arquivos estáticos do frontend
 app.use(express.static('../frontend'));
 
-// Rota temporária para atualizar credenciais admin (REMOVER DEPOIS)
-app.get('/update-admin-secret', async (req, res) => {
+// ===== ENDPOINTS DE SEGURANÇA =====
+
+// Verificar status de inicialização do sistema
+app.get('/api/security/status', async (req, res) => {
   try {
-    const bcrypt = require('bcrypt');
-    const pool = require('./config/database');
-    
-    console.log('🔐 Atualizando credenciais do admin...');
-    
-    // Primeiro, limpar admin antigo
-    await pool.query('DELETE FROM admin WHERE usuario IN ($1, $2)', ['admin', 'Ricardo']);
-    
-    // Gerar hash da nova senha
-    const newPassword = 'Ricardo123';
-    const saltRounds = 10;
-    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
-    
-    console.log('Hash gerado:', hashedPassword);
-    
-    // Inserir novo admin
-    await pool.query(
-        `INSERT INTO admin (usuario, senha_hash) VALUES ($1, $2)`,
-        ['Ricardo', hashedPassword]
-    );
-    
-    // Verificar se foi inserido corretamente
-    const check = await pool.query('SELECT usuario, senha_hash FROM admin WHERE usuario = $1', ['Ricardo']);
-    
+    const report = await securitySetup.getSecurityReport();
     res.json({
       success: true,
-      message: 'Credenciais atualizadas com sucesso!',
-      credentials: {
-        usuario: 'Ricardo',
-        senha: 'Ricardo123'
-      },
-      hash_generated: hashedPassword,
-      admin_found: check.rows.length > 0,
-      admin_data: check.rows[0] || null
+      ...report
     });
-    
-    console.log('✅ Credenciais atualizadas: Ricardo/Ricardo123');
-    console.log('Hash usado:', hashedPassword);
-    
   } catch (error) {
-    console.error('❌ Erro ao atualizar credenciais:', error);
+    console.error('Erro ao obter status de segurança:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao atualizar credenciais',
-      error: error.message
+      message: 'Erro ao verificar status de segurança'
     });
   }
 });
 
-// Rota para verificar admin atual (REMOVER DEPOIS)
-app.get('/check-admin', async (req, res) => {
+// Configuração inicial do sistema (apenas se não há admins)
+app.post('/api/security/setup', async (req, res) => {
   try {
-    const pool = require('./config/database');
-    
-    const admins = await pool.query('SELECT id, usuario, senha_hash, created_at FROM admin ORDER BY id');
+    const { usuario, senha, confirmacao } = req.body;
+
+    // Validações básicas
+    if (!usuario || !senha || !confirmacao) {
+      return res.status(400).json({
+        success: false,
+        message: 'Usuário, senha e confirmação são obrigatórios'
+      });
+    }
+
+    if (senha !== confirmacao) {
+      return res.status(400).json({
+        success: false,
+        message: 'Senha e confirmação não coincidem'
+      });
+    }
+
+    // Verificar se já existe admin
+    const hasAdmins = await securitySetup.hasAdminUsers();
+    if (hasAdmins) {
+      return res.status(403).json({
+        success: false,
+        message: 'Sistema já foi inicializado'
+      });
+    }
+
+    // Criar primeiro admin
+    await securitySetup.createFirstAdmin(usuario, senha);
+
+    // Limpar arquivos inseguros
+    await securitySetup.cleanupInsecureFiles();
+
+    res.json({
+      success: true,
+      message: 'Sistema inicializado com sucesso',
+      usuario: usuario
+    });
+
+  } catch (error) {
+    console.error('Erro na configuração inicial:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// Alterar senha (autenticado)
+app.post('/api/security/change-password', async (req, res) => {
+  try {
+    const { usuario, senhaAtual, novaSenha, confirmacao } = req.body;
+
+    if (!usuario || !senhaAtual || !novaSenha || !confirmacao) {
+      return res.status(400).json({
+        success: false,
+        message: 'Todos os campos são obrigatórios'
+      });
+    }
+
+    if (novaSenha !== confirmacao) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nova senha e confirmação não coincidem'
+      });
+    }
+
+    await securitySetup.updateAdminPassword(usuario, senhaAtual, novaSenha);
+
+    res.json({
+      success: true,
+      message: 'Senha alterada com sucesso'
+    });
+
+  } catch (error) {
+    console.error('Erro ao alterar senha:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+// Gerar nova chave JWT
+app.post('/api/security/generate-jwt', async (req, res) => {
+  try {
+    const newSecret = securitySetup.generateJWTSecret();
     
     res.json({
       success: true,
-      total_admins: admins.rows.length,
-      admins: admins.rows.map(admin => ({
-        id: admin.id,
-        usuario: admin.usuario,
-        senha_hash: admin.senha_hash.substring(0, 20) + '...',
-        created_at: admin.created_at
-      }))
+      message: 'Nova chave JWT gerada',
+      jwt_secret: newSecret,
+      instructions: 'Adicione esta chave ao arquivo .env como JWT_SECRET e reinicie o servidor'
     });
-    
+
   } catch (error) {
-    console.error('❌ Erro ao verificar admin:', error);
+    console.error('Erro ao gerar JWT:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao verificar admin',
-      error: error.message
+      message: 'Erro ao gerar nova chave JWT'
     });
   }
 });
@@ -211,6 +259,7 @@ app.use('/api/admin/login', loginLimiter);
 // Rotas da API
 app.use('/api', publicRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/admin', servicosRoutes);
 
 // Rota específica para admin
 app.get('/admin', (req, res) => {

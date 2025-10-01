@@ -614,4 +614,67 @@ router.get('/servicos', async (req, res) => {
   }
 });
 
+// Rota de debug para verificar agendamentos em tempo real
+router.get('/debug-agendamentos/:data?', async (req, res) => {
+  try {
+    const { data } = req.params;
+    const dataFilter = data || new Date().toISOString().split('T')[0];
+    
+    console.log('🔍 Debug: Verificando agendamentos para', dataFilter);
+    
+    // Buscar todos os agendamentos para a data
+    const agendamentos = await pool.query(`
+      SELECT 
+        id, nome_cliente, telefone, data, horario, 
+        servico_id, status, observacoes, created_at, updated_at
+      FROM agendamentos 
+      WHERE data = $1 
+      ORDER BY horario ASC
+    `, [dataFilter]);
+    
+    // Buscar também horários bloqueados
+    const bloqueios = await pool.query(`
+      SELECT 
+        id, data_inicio, data_fim, horario_inicio, horario_fim, 
+        motivo, ativo, created_at
+      FROM horarios_bloqueados 
+      WHERE data_inicio <= $1 AND (data_fim IS NULL OR data_fim >= $1)
+        AND ativo = true
+      ORDER BY horario_inicio ASC
+    `, [dataFilter]);
+    
+    // Buscar serviços para referência
+    const servicos = await pool.query('SELECT id, nome FROM servicos ORDER BY id');
+    
+    const servicosMap = {};
+    servicos.rows.forEach(s => servicosMap[s.id] = s.nome);
+    
+    console.log('📊 Debug resultados:', {
+      data: dataFilter,
+      agendamentos: agendamentos.rows.length,
+      bloqueios: bloqueios.rows.length
+    });
+    
+    res.json({
+      success: true,
+      data: dataFilter,
+      agendamentos: agendamentos.rows.map(ag => ({
+        ...ag,
+        servico_nome: servicosMap[ag.servico_id] || 'Serviço não encontrado'
+      })),
+      bloqueios: bloqueios.rows,
+      servicos: servicosMap,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro no debug de agendamentos:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro no debug',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
