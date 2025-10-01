@@ -259,17 +259,18 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
     );
     console.log('🕐 Horários base gerados:', horariosBase);
 
-    // VERIFICAÇÃO DETALHADA DE AGENDAMENTOS EXISTENTES
+    // VERIFICAÇÃO DETALHADA DE AGENDAMENTOS EXISTENTES COM DURAÇÃO
     const agendamentosExistentes = await pool.query(`
-      SELECT horario, nome_cliente, id, status 
-      FROM agendamentos 
-      WHERE data = $1 AND (status = 'agendado' OR status = 'confirmado')
-      ORDER BY horario
+      SELECT a.horario, a.nome_cliente, a.id, a.status, s.duracao, s.nome_servico
+      FROM agendamentos a
+      JOIN servicos s ON a.servico_id = s.id
+      WHERE a.data = $1 AND (a.status = 'agendado' OR a.status = 'confirmado')
+      ORDER BY a.horario
     `, [data]);
     
     console.log('📋 Agendamentos existentes para', data + ':', agendamentosExistentes.rows.length);
     agendamentosExistentes.rows.forEach(agendamento => {
-      console.log(`   - ${agendamento.horario}: ${agendamento.nome_cliente} (ID: ${agendamento.id}, Status: ${agendamento.status})`);
+      console.log(`   - ${agendamento.horario}: ${agendamento.nome_cliente} (${agendamento.nome_servico} - ${agendamento.duracao}min, ID: ${agendamento.id}, Status: ${agendamento.status})`);
     });
 
     // VERIFICAÇÃO DETALHADA DE BLOQUEIOS
@@ -289,9 +290,35 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
       console.log(`   - ${bloqueio.horario_inicio}${bloqueio.horario_fim ? ' até ' + bloqueio.horario_fim : ''}: ${bloqueio.motivo || 'Sem motivo'} (ID: ${bloqueio.id})`);
     });
 
-    // Extrair horários ocupados por agendamentos
-    const horariosOcupados = agendamentosExistentes.rows.map(row => row.horario);
-    console.log('🔴 Horários ocupados por agendamentos:', horariosOcupados);
+    // Extrair horários ocupados por agendamentos (considerando duração do serviço)
+    const horariosOcupados = [];
+    agendamentosExistentes.rows.forEach(agendamento => {
+      const horarioInicio = agendamento.horario;
+      const duracaoMinutos = parseInt(agendamento.duracao) || 30; // Default 30min se não especificado
+      const duracaoSlot = parseInt(config.duracao_slot || '30');
+      
+      // Calcular quantos slots de duração_slot são necessários para a duração total
+      const slotsNecessarios = Math.ceil(duracaoMinutos / duracaoSlot);
+      
+      console.log(`   - Processando agendamento ${horarioInicio}: ${agendamento.nome_servico} (${duracaoMinutos}min = ${slotsNecessarios} slots de ${duracaoSlot}min)`);
+      
+      // Adicionar todos os horários ocupados pela duração do serviço
+      for (let i = 0; i < slotsNecessarios; i++) {
+        const [hora, minuto] = horarioInicio.split(':').map(Number);
+        const totalMinutos = hora * 60 + minuto + (i * duracaoSlot);
+        const horaOcupada = Math.floor(totalMinutos / 60);
+        const minutoOcupado = totalMinutos % 60;
+        const horarioOcupado = `${horaOcupada.toString().padStart(2, '0')}:${minutoOcupado.toString().padStart(2, '0')}`;
+        
+        // Só adicionar se o horário estiver dentro dos horários base disponíveis
+        if (horariosBase.includes(horarioOcupado)) {
+          horariosOcupados.push(horarioOcupado);
+          console.log(`     → Slot ${i + 1}: ${horarioOcupado} OCUPADO`);
+        }
+      }
+    });
+    
+    console.log('🔴 TODOS os horários ocupados por agendamentos (com duração):', horariosOcupados);
     
     // Processar bloqueios administrativos
     const horariosAdminBloqueados = [];
@@ -699,5 +726,7 @@ router.get('/debug-agendamentos/:data?', async (req, res) => {
     });
   }
 });
+
+
 
 module.exports = router;

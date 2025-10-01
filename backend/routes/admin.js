@@ -406,6 +406,44 @@ router.delete('/servicos/:id', verificarToken, async (req, res) => {
   }
 });
 
+// PUT /api/admin/servicos/:id/toggle - Toggle status ativo/inativo
+router.put('/servicos/:id/toggle', verificarToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Primeiro buscar o status atual
+    const servicoAtual = await pool.query('SELECT ativo FROM servicos WHERE id = $1', [id]);
+    
+    if (servicoAtual.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Serviço não encontrado'
+      });
+    }
+
+    const novoStatus = !servicoAtual.rows[0].ativo;
+
+    // Atualizar o status
+    const result = await pool.query(
+      'UPDATE servicos SET ativo = $1 WHERE id = $2 RETURNING *',
+      [novoStatus, id]
+    );
+
+    res.json({
+      success: true,
+      message: `Serviço ${novoStatus ? 'ativado' : 'desativado'} com sucesso`,
+      servico: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Erro ao alterar status do serviço:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
 // GET /api/admin/dashboard - Estatísticas do dashboard
 router.get('/dashboard', verificarToken, async (req, res) => {
   try {
