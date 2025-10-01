@@ -27,49 +27,135 @@ router.post('/agendar', validarAgendamento, async (req, res) => {
 
     const { nome_cliente, telefone, data, horario, servico_id, observacoes } = req.body;
 
-    // Verificar se o horário já está ocupado
-    const conflito = await pool.query(
-      'SELECT id FROM agendamentos WHERE data = $1 AND horario = $2 AND status = $3',
-      [data, horario, 'agendado']
-    );
+    console.log('📝 Tentativa de agendamento:', {
+      cliente: nome_cliente,
+      telefone: telefone,
+      data: data,
+      horario: horario,
+      servico_id: servico_id
+    });
+
+    // VERIFICAÇÃO RIGOROSA DE CONFLITO DE HORÁRIO
+    const conflito = await pool.query(`
+      SELECT id, nome_cliente, telefone, status, created_at
+      FROM agendamentos 
+      WHERE data = $1 AND horario = $2 AND (status = 'agendado' OR status = 'confirmado')
+    `, [data, horario]);
 
     if (conflito.rows.length > 0) {
+      const agendamentoExistente = conflito.rows[0];
+      console.log('❌ CONFLITO DETECTADO:', {
+        horario_solicitado: `${data} ${horario}`,
+        agendamento_existente: agendamentoExistente.id,
+        cliente_existente: agendamentoExistente.nome_cliente,
+        status: agendamentoExistente.status,
+        criado_em: agendamentoExistente.created_at
+      });
+      
       return res.status(400).json({
         success: false,
-        message: 'Este horário já está ocupado. Por favor, escolha outro horário.'
+        message: `Este horário já está ocupado por ${agendamentoExistente.nome_cliente}. Por favor, escolha outro horário.`,
+        conflito: {
+          data: data,
+          horario: horario,
+          cliente_existente: agendamentoExistente.nome_cliente
+        }
       });
     }
 
-    // Verificar se o serviço existe
-    const servicoExiste = await pool.query('SELECT id FROM servicos WHERE id = $1 AND ativo = true', [servico_id]);
+    // Verificar bloqueios administrativos
+    const bloqueio = await pool.query(`
+      SELECT id, motivo, horario_inicio, horario_fim
+      FROM horarios_bloqueados 
+      WHERE ativo = true 
+        AND data_inicio <= $1 
+        AND (data_fim IS NULL OR data_fim >= $1)
+        AND (
+          (horario_fim IS NULL AND horario_inicio = $2) OR
+          (horario_fim IS NOT NULL AND $2 >= horario_inicio AND $2 < horario_fim)
+        )
+    `, [data, horario]);
+
+    if (bloqueio.rows.length > 0) {
+      const bloqueioExistente = bloqueio.rows[0];
+      console.log('❌ BLOQUEIO ADMINISTRATIVO DETECTADO:', bloqueioExistente);
+      
+      return res.status(400).json({
+        success: false,
+        message: `Este horário está bloqueado: ${bloqueioExistente.motivo || 'Horário não disponível'}`,
+        bloqueio: bloqueioExistente
+      });
+    }
+
+    // Verificar se o serviço existe e está ativo
+    const servicoExiste = await pool.query('SELECT id, nome_servico, preco FROM servicos WHERE id = $1 AND ativo = true', [servico_id]);
     if (servicoExiste.rows.length === 0) {
+      console.log('❌ Serviço não encontrado:', servico_id);
       return res.status(400).json({
         success: false,
         message: 'Serviço não encontrado ou inativo'
       });
     }
 
-    // Verificar se a data não é no passado
+    const servico = servicoExiste.rows[0];
+    console.log('✅ Serviço válido:', servico);
+
+    // Verificar se a data não é no passado (com margem de 15 minutos)
     const dataAgendamento = new Date(data + 'T' + horario);
     const agora = new Date();
+    const margemMinutos = 15; // Permitir agendamento até 15 minutos no passado
+    const agoraComMargem = new Date(agora.getTime() - margemMinutos * 60 * 1000);
     
-    if (dataAgendamento <= agora) {
+    console.log('🕐 Verificação de data:', {
+      data: data,
+      horario: horario,
+      dataAgendamento: dataAgendamento.toISOString(),
+      agora: agora.toISOString(),
+      agoraComMargem: agoraComMargem.toISOString(),
+      ePassado: dataAgendamento <= agoraComMargem
+    });
+    
+    if (dataAgendamento <= agoraComMargem) {
+      console.log('❌ Tentativa de agendar no passado');
       return res.status(400).json({
         success: false,
         message: 'Não é possível agendar para datas passadas'
       });
     }
 
-    // Criar o agendamento
+    // CRIAR O AGENDAMENTO COM LOG DETALHADO
+    console.log('💾 Criando agendamento no banco de dados...');
     const novoAgendamento = await pool.query(
-      'INSERT INTO agendamentos (nome_cliente, telefone, data, horario, servico_id, observacoes) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-      [nome_cliente, telefone, data, horario, servico_id, observacoes || null]
+      'INSERT INTO agendamentos (nome_cliente, telefone, data, horario, servico_id, observacoes, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) RETURNING *',
+      [nome_cliente, telefone, data, horario, servico_id, observacoes || null, 'agendado']
     );
+
+    const agendamentoCriado = novoAgendamento.rows[0];
+    console.log('✅ AGENDAMENTO CRIADO COM SUCESSO:', {
+      id: agendamentoCriado.id,
+      cliente: agendamentoCriado.nome_cliente,
+      data_horario: `${agendamentoCriado.data} ${agendamentoCriado.horario}`,
+      servico_id: agendamentoCriado.servico_id,
+      status: agendamentoCriado.status,
+      created_at: agendamentoCriado.created_at
+    });
+
+    // Verificar se realmente foi inserido
+    const verificacao = await pool.query(
+      'SELECT * FROM agendamentos WHERE id = $1',
+      [agendamentoCriado.id]
+    );
+    
+    console.log('🔍 Verificação pós-inserção:', verificacao.rows[0]);
 
     res.status(201).json({
       success: true,
       message: 'Agendamento realizado com sucesso!',
-      agendamento: novoAgendamento.rows[0]
+      agendamento: {
+        ...agendamentoCriado,
+        servico_nome: servico.nome_servico,
+        servico_preco: servico.preco
+      }
     });
 
   } catch (error) {
@@ -157,33 +243,43 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
       intervaloFim,
       duracaoSlot
     );
-    
     console.log('🕐 Horários base gerados:', horariosBase);
 
-    // Buscar agendamentos já existentes para a data
-    const agendamentosExistentes = await pool.query(
-      'SELECT horario FROM agendamentos WHERE data = $1 AND status = $2',
-      [data, 'agendado']
-    );
+    // VERIFICAÇÃO DETALHADA DE AGENDAMENTOS EXISTENTES
+    const agendamentosExistentes = await pool.query(`
+      SELECT horario, nome_cliente, id, status 
+      FROM agendamentos 
+      WHERE data = $1 AND (status = 'agendado' OR status = 'confirmado')
+      ORDER BY horario
+    `, [data]);
     
-    console.log('📋 Agendamentos existentes:', agendamentosExistentes.rows.length);
+    console.log('📋 Agendamentos existentes para', data + ':', agendamentosExistentes.rows.length);
+    agendamentosExistentes.rows.forEach(agendamento => {
+      console.log(`   - ${agendamento.horario}: ${agendamento.nome_cliente} (ID: ${agendamento.id}, Status: ${agendamento.status})`);
+    });
 
-    // Buscar períodos bloqueados pelo admin para a data
+    // VERIFICAÇÃO DETALHADA DE BLOQUEIOS
     const horariosBloqueados = await pool.query(`
-      SELECT horario_inicio, horario_fim, data_fim 
+      SELECT horario_inicio, horario_fim, data_fim, motivo, id
       FROM horarios_bloqueados 
       WHERE ativo = true 
         AND (
           (data_inicio = $1) OR 
           (data_inicio <= $1 AND (data_fim IS NULL OR data_fim >= $1))
         )
+      ORDER BY horario_inicio
     `, [data]);
     
-    console.log('🚫 Bloqueios encontrados:', horariosBloqueados.rows.length);
+    console.log('🚫 Bloqueios encontrados para', data + ':', horariosBloqueados.rows.length);
+    horariosBloqueados.rows.forEach(bloqueio => {
+      console.log(`   - ${bloqueio.horario_inicio}${bloqueio.horario_fim ? ' até ' + bloqueio.horario_fim : ''}: ${bloqueio.motivo || 'Sem motivo'} (ID: ${bloqueio.id})`);
+    });
 
+    // Extrair horários ocupados por agendamentos
     const horariosOcupados = agendamentosExistentes.rows.map(row => row.horario);
+    console.log('🔴 Horários ocupados por agendamentos:', horariosOcupados);
     
-    // Verificar bloqueios de período
+    // Processar bloqueios administrativos
     const horariosAdminBloqueados = [];
     horariosBloqueados.rows.forEach(bloqueio => {
       if (bloqueio.horario_fim) {
@@ -195,21 +291,33 @@ router.get('/horarios-disponiveis/:data', async (req, res) => {
             horariosAdminBloqueados.push(horario);
           }
         });
+        console.log(`   - Bloqueio de período ${inicio} a ${fim} afeta: ${horariosBase.filter(h => h >= inicio && h < fim).join(', ')}`);
       } else {
         // Bloqueio de horário único
         horariosAdminBloqueados.push(bloqueio.horario_inicio);
+        console.log(`   - Bloqueio único: ${bloqueio.horario_inicio}`);
       }
     });
+    
+    console.log('🟠 Horários bloqueados administrativamente:', horariosAdminBloqueados);
 
-    const todosHorariosIndisponiveis = [...horariosOcupados, ...horariosAdminBloqueados];
-    console.log('❌ Horários indisponíveis:', todosHorariosIndisponiveis);
+    // Consolidar todos os horários indisponíveis
+    const todosHorariosIndisponiveis = [...new Set([...horariosOcupados, ...horariosAdminBloqueados])];
+    console.log('❌ TODOS os horários indisponíveis:', todosHorariosIndisponiveis);
 
-    // Filtrar horários disponíveis
+    // Filtrar horários disponíveis com log detalhado
     const horariosDisponiveis = horariosBase.filter(horario => {
-      return !todosHorariosIndisponiveis.some(indisponivel => indisponivel === horario);
+      const disponivel = !todosHorariosIndisponiveis.includes(horario);
+      console.log(`   🕐 ${horario}: ${disponivel ? '✅ DISPONÍVEL' : '❌ OCUPADO'}`);
+      return disponivel;
     });
     
-    console.log('✅ Horários disponíveis:', horariosDisponiveis);
+    console.log('✅ RESULTADO FINAL - Horários disponíveis:', horariosDisponiveis);
+    console.log('📊 ESTATÍSTICAS:');
+    console.log(`   - Total de slots: ${horariosBase.length}`);
+    console.log(`   - Agendamentos: ${horariosOcupados.length}`);
+    console.log(`   - Bloqueios admin: ${horariosAdminBloqueados.length}`);
+    console.log(`   - Disponíveis: ${horariosDisponiveis.length}`);
 
     res.json({
       success: true,
@@ -397,6 +505,82 @@ router.get('/teste-configuracao', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Erro no teste',
+      error: error.message
+    });
+  }
+});
+
+// Rota de debug para verificar estado das tabelas
+router.get('/debug-tabelas/:data?', async (req, res) => {
+  try {
+    const data = req.params.data || new Date().toISOString().split('T')[0];
+    console.log('🔍 DEBUG - Verificando tabelas para data:', data);
+    
+    // 1. Verificar configurações
+    const configuracoes = await pool.query('SELECT * FROM configuracao_salao WHERE ativo = true ORDER BY nome_config');
+    
+    // 2. Verificar agendamentos para a data
+    const agendamentos = await pool.query(`
+      SELECT a.*, s.nome_servico 
+      FROM agendamentos a 
+      LEFT JOIN servicos s ON a.servico_id = s.id 
+      WHERE a.data = $1 
+      ORDER BY a.horario
+    `, [data]);
+    
+    // 3. Verificar bloqueios para a data
+    const bloqueios = await pool.query(`
+      SELECT * FROM horarios_bloqueados 
+      WHERE ativo = true 
+        AND data_inicio <= $1 
+        AND (data_fim IS NULL OR data_fim >= $1)
+      ORDER BY horario_inicio
+    `, [data]);
+    
+    // 4. Verificar serviços
+    const servicos = await pool.query('SELECT * FROM servicos WHERE ativo = true ORDER BY nome_servico');
+    
+    // 5. Verificar estrutura das tabelas
+    const estruturaAgendamentos = await pool.query(`
+      SELECT column_name, data_type, is_nullable, column_default 
+      FROM information_schema.columns 
+      WHERE table_name = 'agendamentos' 
+      ORDER BY ordinal_position
+    `);
+    
+    const result = {
+      success: true,
+      data_consultada: data,
+      resumo: {
+        configuracoes: configuracoes.rows.length,
+        agendamentos: agendamentos.rows.length,
+        bloqueios: bloqueios.rows.length,
+        servicos: servicos.rows.length
+      },
+      detalhes: {
+        configuracoes: configuracoes.rows,
+        agendamentos: agendamentos.rows,
+        bloqueios: bloqueios.rows,
+        servicos: servicos.rows,
+        estrutura_agendamentos: estruturaAgendamentos.rows
+      }
+    };
+    
+    console.log('📊 ESTADO DAS TABELAS:', {
+      data: data,
+      configuracoes: configuracoes.rows.length,
+      agendamentos: agendamentos.rows.length,
+      agendamentos_detalhes: agendamentos.rows.map(a => `${a.horario} - ${a.nome_cliente} (${a.status})`),
+      bloqueios: bloqueios.rows.length,
+      servicos: servicos.rows.length
+    });
+    
+    res.json(result);
+    
+  } catch (error) {
+    console.error('❌ Erro no debug:', error);
+    res.status(500).json({
+      success: false,
       error: error.message
     });
   }
