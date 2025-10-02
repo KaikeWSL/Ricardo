@@ -3,16 +3,37 @@ const crypto = require('crypto');
 
 class AsaasPixService {
   constructor() {
+    // Debug das variáveis de ambiente
+    console.log('🔍 AsaasPixService - DEBUG Environment:');
+    console.log('  process.env.ASAAS_API_KEY exists:', !!process.env.ASAAS_API_KEY);
+    console.log('  process.env.ASAAS_ENVIRONMENT:', process.env.ASAAS_ENVIRONMENT);
+    
     this.apiKey = process.env.ASAAS_API_KEY;
     this.baseUrl = process.env.ASAAS_ENVIRONMENT === 'production' 
       ? 'https://api.asaas.com'
       : 'https://sandbox.asaas.com';
     this.version = 'v3';
+    
+    console.log('🔍 AsaasPixService configurado:');
+    console.log('  apiKey exists:', !!this.apiKey);
+    console.log('  baseUrl:', this.baseUrl);
+  }
+
+  // Helper para obter API key com fallback
+  getApiKey() {
+    return this.apiKey || process.env.ASAAS_API_KEY || '$aact_hmlg_000MzkwODA2MWY2OGM3MWRlMDU2NWM3MzJlNzZmNGZhZGY6OmFjZjYyMWI3LWQ3Y2YtNDA4OS1hZjVhLWMyN2QyNjQxOGYxNTo6JGFhY2hfMmY1ZTRkZjMtMjYzYy00NTYxLTljNzMtMDFkOTMxZWE2NWMy';
   }
 
   // Criar cobrança PIX
   async criarCobrancaPix(dadosCobranca) {
     try {
+      // Garantir que temos a API key
+      const apiKey = this.getApiKey();
+      
+      if (!apiKey) {
+        throw new Error('API Key do Asaas não configurada');
+      }
+      
       const payload = {
         customer: dadosCobranca.customer_id || await this.criarCliente(dadosCobranca.cliente),
         billingType: 'PIX',
@@ -28,7 +49,7 @@ class AsaasPixService {
       const response = await fetch(`${this.baseUrl}/${this.version}/payments`, {
         method: 'POST',
         headers: {
-          'access_token': this.apiKey,
+          'access_token': apiKey,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
@@ -68,7 +89,7 @@ class AsaasPixService {
     try {
       const response = await fetch(`${this.baseUrl}/${this.version}/payments/${paymentId}/pixQrCode`, {
         headers: {
-          'access_token': this.apiKey
+          'access_token': this.getApiKey()
         }
       });
 
@@ -104,7 +125,7 @@ class AsaasPixService {
       const response = await fetch(`${this.baseUrl}/${this.version}/customers`, {
         method: 'POST',
         headers: {
-          'access_token': this.apiKey,
+          'access_token': this.getApiKey(),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
@@ -137,7 +158,7 @@ class AsaasPixService {
 
       const response = await fetch(`${this.baseUrl}/${this.version}/customers?${params}`, {
         headers: {
-          'access_token': this.apiKey
+          'access_token': this.getApiKey()
         }
       });
 
@@ -161,7 +182,7 @@ class AsaasPixService {
     try {
       const response = await fetch(`${this.baseUrl}/${this.version}/payments/${paymentId}`, {
         headers: {
-          'access_token': this.apiKey
+          'access_token': this.getApiKey()
         }
       });
 

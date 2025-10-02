@@ -5,6 +5,9 @@ const crypto = require('crypto');
 const AsaasPixService = require('../services/AsaasPixService');
 const router = express.Router();
 
+// Garantir que dotenv está carregado
+require('dotenv').config();
+
 // Inicializar serviço de pagamento Asaas
 const asaasService = new AsaasPixService();
 
@@ -116,9 +119,28 @@ async function gerarPixGarantia(agendamentoId, nomeCliente, telefone) {
   const valor = '5.00';
   const descricao = `Taxa garantia agendamento ${agendamentoId}`;
   
+  // DEBUG: Verificar variáveis de ambiente
+  console.log('🔍 DEBUG - Variáveis de ambiente:');
+  console.log('  ASAAS_API_KEY exists:', !!process.env.ASAAS_API_KEY);
+  console.log('  ASAAS_API_KEY length:', process.env.ASAAS_API_KEY?.length);
+  console.log('  ASAAS_API_KEY first 20 chars:', process.env.ASAAS_API_KEY?.substring(0, 20));
+  console.log('  USE_ASAAS:', process.env.USE_ASAAS);
+  console.log('  ASAAS_ENVIRONMENT:', process.env.ASAAS_ENVIRONMENT);
+  
   // USAR APENAS ASAAS - SISTEMA SIMPLIFICADO
-  if (!process.env.ASAAS_API_KEY) {
+  const asaasApiKey = process.env.ASAAS_API_KEY || '$aact_hmlg_000MzkwODA2MWY2OGM3MWRlMDU2NWM3MzJlNzZmNGZhZGY6OmFjZjYyMWI3LWQ3Y2YtNDA4OS1hZjVhLWMyN2QyNjQxOGYxNTo6JGFhY2hfMmY1ZTRkZjMtMjYzYy00NTYxLTljNzMtMDFkOTMxZWE2NWMy';
+  
+  if (!asaasApiKey) {
+    console.error('❌ ASAAS_API_KEY não encontrada no process.env');
+    console.error('🔍 Todas as env vars disponíveis:', Object.keys(process.env).filter(k => k.includes('ASAAS')));
     throw new Error('Chave API do Asaas não configurada');
+  }
+  
+  // Configurar temporariamente a variável se não estiver definida
+  if (!process.env.ASAAS_API_KEY) {
+    process.env.ASAAS_API_KEY = '$aact_hmlg_000MzkwODA2MWY2OGM3MWRlMDU2NWM3MzJlNzZmNGZhZGY6OmFjZjYyMWI3LWQ3Y2YtNDA4OS1hZjVhLWMyN2QyNjQxOGYxNTo6JGFhY2hfMmY1ZTRkZjMtMjYzYy00NTYxLTljNzMtMDFkOTMxZWE2NWMy';
+    process.env.ASAAS_ENVIRONMENT = 'sandbox';
+    console.log('⚠️ Configurando ASAAS_API_KEY temporariamente');
   }
 
   try {
@@ -1278,6 +1300,36 @@ router.get('/debug-agendamentos/:data?', async (req, res) => {
   }
 });
 
-
+// GET /api/test-asaas - Testar configuração do Asaas
+router.get('/test-asaas', async (req, res) => {
+  try {
+    console.log('🧪 Testando configuração do Asaas...');
+    console.log('  process.env.ASAAS_API_KEY exists:', !!process.env.ASAAS_API_KEY);
+    console.log('  process.env.ASAAS_API_KEY length:', process.env.ASAAS_API_KEY?.length);
+    
+    // Testar criação do serviço
+    const testService = new AsaasPixService();
+    const apiKey = testService.getApiKey();
+    
+    res.json({
+      success: true,
+      message: 'Teste de configuração Asaas',
+      config: {
+        hasApiKey: !!apiKey,
+        apiKeyLength: apiKey?.length,
+        environment: process.env.ASAAS_ENVIRONMENT,
+        baseUrl: testService.baseUrl
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro no teste Asaas:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro no teste',
+      error: error.message
+    });
+  }
+});
 
 module.exports = router;
