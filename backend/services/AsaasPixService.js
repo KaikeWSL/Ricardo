@@ -21,7 +21,9 @@ class AsaasPixService {
 
   // Helper para obter API key com fallback
   getApiKey() {
-    return this.apiKey || process.env.ASAAS_API_KEY || '$aact_hmlg_000MzkwODA2MWY2OGM3MWRlMDU2NWM3MzJlNzZmNGZhZGY6OmFjZjYyMWI3LWQ3Y2YtNDA4OS1hZjVhLWMyN2QyNjQxOGYxNTo6JGFhY2hfMmY1ZTRkZjMtMjYzYy00NTYxLTljNzMtMDFkOTMxZWE2NWMy';
+    const key = this.apiKey || process.env.ASAAS_API_KEY || '$aact_hmlg_000MzkwODA2MWY2OGM3MWRlMDU2NWM3MzJlNzZmNGZhZGY6OmFjZjYyMWI3LWQ3Y2YtNDA4OS1hZjVhLWMyN2QyNjQxOGYxNTo6JGFhY2hfMmY1ZTRkZjMtMjYzYy00NTYxLTljNzMtMDFkOTMxZWE2NWMy';
+    // Remover $asaas_key se presente (pode ser que estava duplicado)
+    return key?.replace(/^\$asaas_key/, '');
   }
 
   // Criar cobrança PIX
@@ -29,6 +31,11 @@ class AsaasPixService {
     try {
       // Garantir que temos a API key
       const apiKey = this.getApiKey();
+      
+      console.log('🔍 DEBUG criarCobrancaPix:');
+      console.log('  apiKey existe:', !!apiKey);
+      console.log('  apiKey length:', apiKey?.length);
+      console.log('  baseUrl:', this.baseUrl);
       
       if (!apiKey) {
         throw new Error('API Key do Asaas não configurada');
@@ -114,6 +121,14 @@ class AsaasPixService {
   // Criar cliente se não existir
   async criarCliente(dadosCliente) {
     try {
+      const apiKey = this.getApiKey();
+      const url = `${this.baseUrl}/${this.version}/customers`;
+      
+      console.log('🔍 DEBUG criarCliente:');
+      console.log('  URL:', url);
+      console.log('  API Key existe:', !!apiKey);
+      console.log('  Dados cliente:', dadosCliente);
+      
       const payload = {
         name: dadosCliente.nome,
         email: dadosCliente.email || 'cliente@email.com',
@@ -122,18 +137,36 @@ class AsaasPixService {
         groupName: 'Clientes Agendamento'
       };
 
-      const response = await fetch(`${this.baseUrl}/${this.version}/customers`, {
+      console.log('📤 Payload para Asaas:', payload);
+
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'access_token': this.getApiKey(),
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'User-Agent': 'SistemaAgendamento/1.0'
         },
         body: JSON.stringify(payload)
       });
 
-      const result = await response.json();
+      console.log('📥 Response status:', response.status);
+      console.log('📥 Response headers:', Object.fromEntries(response.headers.entries()));
+      
+      // Tentar ler como texto primeiro para debug
+      const responseText = await response.text();
+      console.log('📥 Response text (first 200 chars):', responseText.substring(0, 200));
+      
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('❌ Erro ao fazer parse JSON:', parseError.message);
+        console.error('📄 Response completo:', responseText);
+        throw new Error(`API retornou HTML em vez de JSON. Status: ${response.status}`);
+      }
       
       if (!response.ok) {
+        console.error('❌ Response não OK:', result);
         // Se cliente já existe, buscar pelo CPF/telefone
         if (result.errors && result.errors.some(e => e.code === 'already_exists')) {
           return await this.buscarCliente(dadosCliente);
