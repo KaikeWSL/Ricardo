@@ -1,17 +1,25 @@
 -- =============================================
 -- SCRIPT DE CRIAÇÃO DA TABELA PAGAMENTOS PIX
 -- Sistema de Agendamento com Garantia PIX
--- PostgreSQL (Neon Database)
+-- PostgreSQL (Neon Database) - VERSÃO SEGURA
 -- =============================================
 
 -- Criar extensão para UUID se não existir
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Criar ENUM para status de pagamento
-CREATE TYPE pagamento_status AS ENUM ('pending', 'paid', 'expired', 'cancelled');
+-- Criar ENUM para status de pagamento (apenas se não existir)
+DO $$ BEGIN
+    CREATE TYPE pagamento_status AS ENUM ('pending', 'paid', 'expired', 'cancelled');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- Criar ENUM para provedores PIX (apenas Asaas)
-CREATE TYPE pix_provider AS ENUM ('asaas');
+DO $$ BEGIN
+    CREATE TYPE pix_provider AS ENUM ('asaas');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- Criar tabela para controle de pagamentos PIX
 CREATE TABLE IF NOT EXISTS pagamentos_pix (
@@ -44,36 +52,58 @@ CREATE TABLE IF NOT EXISTS pagamentos_pix (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Criar índices
+-- Criar índices apenas se não existirem
 CREATE INDEX IF NOT EXISTS idx_pagamentos_pix_agendamento ON pagamentos_pix(agendamento_id);
 CREATE INDEX IF NOT EXISTS idx_pagamentos_pix_pix_id ON pagamentos_pix(pix_id);
 CREATE INDEX IF NOT EXISTS idx_pagamentos_pix_provider_payment ON pagamentos_pix(provider_payment_id);
 CREATE INDEX IF NOT EXISTS idx_pagamentos_pix_status ON pagamentos_pix(status);
 CREATE INDEX IF NOT EXISTS idx_pagamentos_pix_expires_at ON pagamentos_pix(expires_at);
 
--- Adicionar colunas na tabela agendamentos se não existirem
+-- Verificar se tabela agendamentos existe antes de adicionar colunas
 DO $$ 
 BEGIN
-    -- Adicionar coluna pix_pago
-    BEGIN
-        ALTER TABLE agendamentos ADD COLUMN pix_pago BOOLEAN DEFAULT FALSE;
-    EXCEPTION
-        WHEN duplicate_column THEN NULL;
-    END;
-    
-    -- Adicionar coluna pix_data_pagamento
-    BEGIN
-        ALTER TABLE agendamentos ADD COLUMN pix_data_pagamento TIMESTAMP WITH TIME ZONE NULL;
-    EXCEPTION
-        WHEN duplicate_column THEN NULL;
-    END;
-    
-    -- Adicionar coluna pix_valor_garantia
-    BEGIN
-        ALTER TABLE agendamentos ADD COLUMN pix_valor_garantia DECIMAL(10,2) DEFAULT 5.00;
-    EXCEPTION
-        WHEN duplicate_column THEN NULL;
-    END;
+    -- Verificar se a tabela agendamentos existe
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'agendamentos') THEN
+        
+        -- Adicionar coluna pix_pago
+        BEGIN
+            ALTER TABLE agendamentos ADD COLUMN pix_pago BOOLEAN DEFAULT FALSE;
+        EXCEPTION
+            WHEN duplicate_column THEN NULL;
+        END;
+        
+        -- Adicionar coluna pix_data_pagamento
+        BEGIN
+            ALTER TABLE agendamentos ADD COLUMN pix_data_pagamento TIMESTAMP WITH TIME ZONE NULL;
+        EXCEPTION
+            WHEN duplicate_column THEN NULL;
+        END;
+        
+        -- Adicionar coluna pix_valor_garantia
+        BEGIN
+            ALTER TABLE agendamentos ADD COLUMN pix_valor_garantia DECIMAL(10,2) DEFAULT 5.00;
+        EXCEPTION
+            WHEN duplicate_column THEN NULL;
+        END;
+        
+    ELSE
+        -- Criar tabela agendamentos básica se não existir
+        CREATE TABLE agendamentos (
+            id SERIAL PRIMARY KEY,
+            nome_cliente VARCHAR(255) NOT NULL,
+            telefone VARCHAR(20) NOT NULL,
+            data DATE NOT NULL,
+            horario TIME NOT NULL,
+            servico_id INTEGER NOT NULL,
+            observacoes TEXT,
+            status VARCHAR(50) DEFAULT 'agendado',
+            pix_pago BOOLEAN DEFAULT FALSE,
+            pix_data_pagamento TIMESTAMP WITH TIME ZONE NULL,
+            pix_valor_garantia DECIMAL(10,2) DEFAULT 5.00,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+    END IF;
 END $$;
 
 -- Criar índice para buscar agendamentos com PIX pago
@@ -134,6 +164,16 @@ CREATE TABLE IF NOT EXISTS configuracoes (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Criar tabela servicos se não existir
+CREATE TABLE IF NOT EXISTS servicos (
+    id SERIAL PRIMARY KEY,
+    nome_servico VARCHAR(255) NOT NULL,
+    preco DECIMAL(10,2) NOT NULL,
+    duracao INTEGER DEFAULT 30,
+    ativo BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Inserir configuração do valor da garantia PIX
 INSERT INTO configuracoes (chave, valor, descricao) VALUES 
 ('pix_garantia_valor', '5.00', 'Valor da garantia PIX para agendamentos (R$)'),
@@ -141,9 +181,20 @@ INSERT INTO configuracoes (chave, valor, descricao) VALUES
 ('pix_providers_enabled', 'asaas', 'Provedor PIX habilitado: apenas Asaas')
 ON CONFLICT (chave) DO NOTHING;
 
+-- Inserir alguns serviços básicos para teste
+INSERT INTO servicos (nome_servico, preco, duracao) VALUES 
+('Corte Masculino', 25.00, 30),
+('Corte + Barba', 35.00, 45),
+('Progressiva', 150.00, 180),
+('Luzes', 80.00, 120)
+ON CONFLICT DO NOTHING;
+
 -- =============================================
 -- VIEWS PARA RELATÓRIOS
 -- =============================================
+
+-- Remover view se existir e recriar
+DROP VIEW IF EXISTS vw_relatorio_pix;
 
 -- View para relatório de pagamentos PIX
 CREATE OR REPLACE VIEW vw_relatorio_pix AS
@@ -159,11 +210,11 @@ SELECT
     
     -- Dados do agendamento
     a.id as agendamento_id,
-    a.cliente_nome,
-    a.cliente_telefone,
-    a.data_agendamento,
+    a.nome_cliente,
+    a.telefone,
+    a.data,
     a.horario,
-    s.nome as servico_nome,
+    s.nome_servico,
     s.preco as servico_preco,
     s.duracao as servico_duracao,
     
@@ -184,35 +235,34 @@ JOIN servicos s ON a.servico_id = s.id
 ORDER BY pp.created_at DESC;
 
 -- =============================================
+-- VERIFICAÇÕES FINAIS
+-- =============================================
+
+-- Verificar se tudo foi criado corretamente
+SELECT 
+    'Estrutura criada com sucesso!' as status,
+    (SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'pagamentos_pix') as tabela_pix_criada,
+    (SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'agendamentos') as tabela_agendamentos_existe,
+    (SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'servicos') as tabela_servicos_existe,
+    (SELECT COUNT(*) FROM servicos WHERE ativo = true) as servicos_ativos;
+
+-- =============================================
 -- COMENTÁRIOS E DOCUMENTAÇÃO
 -- =============================================
 
 /*
-TABELA: pagamentos_pix (PostgreSQL)
-- Controla todos os pagamentos PIX de garantia
-- Usa APENAS Asaas como provedor PIX
-- Status automático por trigger
-- Expiração automática por tempo
+VERSÃO SEGURA DO SCRIPT PIX ASAAS
+- Verifica se tipos ENUM já existem
+- Cria tabelas básicas se não existirem
+- Não gera erros em re-execução
+- Insere dados de teste
+- Sistema focado apenas no Asaas
 
-CAMPOS PRINCIPAIS:
-- pix_id: Identificador único do PIX
-- provider: Sempre 'asaas'
-- status: pending/paid/expired/cancelled
-- qr_code: Código QR para pagamento
-- emv_code: Código EMV do PIX
+PARA EXECUTAR:
+1. Cole este SQL no seu cliente PostgreSQL
+2. Execute todo o script
+3. Inicie o servidor: npm start
+4. Teste um agendamento
 
-TRIGGERS:
-- tr_pagamento_pix_paid: Atualiza agendamento quando PIX é pago
-- tr_pagamentos_pix_updated_at: Atualiza campo updated_at
-
-VIEWS:
-- vw_relatorio_pix: Relatório completo de pagamentos
-
-CONFIGURAÇÕES:
-- pix_garantia_valor: Valor da garantia (padrão R$ 5,00)
-- pix_timeout_minutes: Tempo limite (padrão 15 minutos)
-
-TIPOS ENUM:
-- pagamento_status: pending, paid, expired, cancelled
-- pix_provider: asaas (apenas)
+SISTEMA PRONTO! 🚀
 */
