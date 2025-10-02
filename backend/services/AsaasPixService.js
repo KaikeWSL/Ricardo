@@ -9,14 +9,17 @@ class AsaasPixService {
     console.log('  process.env.ASAAS_ENVIRONMENT:', process.env.ASAAS_ENVIRONMENT);
     
     this.apiKey = process.env.ASAAS_API_KEY;
-    this.baseUrl = process.env.ASAAS_ENVIRONMENT === 'production' 
-      ? 'https://api.asaas.com'
-      : 'https://sandbox.asaas.com';
+    // Forçar sandbox baseado na chave
+    const isSandbox = this.apiKey?.includes('hmlg') || process.env.ASAAS_ENVIRONMENT === 'sandbox';
+    this.baseUrl = isSandbox 
+      ? 'https://sandbox.asaas.com'
+      : 'https://api.asaas.com';
     this.version = 'v3';
     
     console.log('🔍 AsaasPixService configurado:');
     console.log('  apiKey exists:', !!this.apiKey);
     console.log('  baseUrl:', this.baseUrl);
+    console.log('  isSandbox:', isSandbox);
   }
 
   // Helper para obter API key com fallback
