@@ -26,9 +26,9 @@ function getBrazilDateTime() {
 
 // Configurações PIX do estabelecimento
 const PIX_CONFIG = {
-  merchantName: 'RICARDO CABELEREIRO',
-  merchantCity: 'SAO PAULO',
-  pixKey: '11987108126', // Chave PIX real do barbeiro
+  merchantName: process.env.MERCHANT_NAME || 'Kaike Wesley Dos Santos',
+  merchantCity: process.env.MERCHANT_CITY || 'SAO PAULO',
+  pixKey: process.env.PIX_KEY || '1e198d42-acd3-4240-acc7-a472825cde47',
   merchantCategoryCode: '0000', // Categoria padrão
   countryCode: 'BR',
   currency: '986' // Real brasileiro
