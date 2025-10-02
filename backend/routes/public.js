@@ -29,7 +29,7 @@ const PIX_CONFIG = {
   merchantName: 'RICARDO CABELEREIRO',
   merchantCity: 'SAO PAULO',
   pixKey: '11987108126', // Chave PIX real do barbeiro
-  merchantCategoryCode: '9602', // Categoria para serviços de beleza
+  merchantCategoryCode: '0000', // Categoria padrão
   countryCode: 'BR',
   currency: '986' // Real brasileiro
 };
@@ -42,13 +42,16 @@ function gerarCodigoEMVPix(valor, txid, descricao) {
     return id + length + value;
   }
 
-  // Função para calcular CRC16
+  // Função para calcular CRC16 (algoritmo oficial PIX)
   function calculateCRC16(data) {
     const polynomial = 0x1021;
     let crc = 0xFFFF;
     
-    for (let i = 0; i < data.length; i++) {
-      crc ^= (data.charCodeAt(i) << 8);
+    // Converter string para buffer
+    const buffer = Buffer.from(data, 'utf8');
+    
+    for (let i = 0; i < buffer.length; i++) {
+      crc ^= (buffer[i] << 8);
       for (let j = 0; j < 8; j++) {
         if (crc & 0x8000) {
           crc = (crc << 1) ^ polynomial;
@@ -62,45 +65,55 @@ function gerarCodigoEMVPix(valor, txid, descricao) {
     return crc.toString(16).toUpperCase().padStart(4, '0');
   }
 
+  // Limitar descrição a 25 caracteres para evitar problemas
+  let descricaoLimitada = '';
+  if (descricao) {
+    descricaoLimitada = descricao.substring(0, 25);
+  }
+
   // Construir payload EMV
   let payload = '';
   
-  // Payload Format Indicator
+  // Payload Format Indicator (obrigatório)
   payload += formatEMVField('00', '01');
   
-  // Point of Initiation Method (dinâmico)
+  // Point of Initiation Method (estático = 11, dinâmico = 12)
   payload += formatEMVField('01', '12');
   
-  // Merchant Account Information (PIX)
+  // Merchant Account Information (PIX) - Campo 26
   let merchantInfo = '';
   merchantInfo += formatEMVField('00', 'BR.GOV.BCB.PIX');
   merchantInfo += formatEMVField('01', PIX_CONFIG.pixKey);
-  if (descricao) {
-    merchantInfo += formatEMVField('02', descricao);
+  if (descricaoLimitada) {
+    merchantInfo += formatEMVField('02', descricaoLimitada);
   }
   payload += formatEMVField('26', merchantInfo);
   
-  // Merchant Category Code
-  payload += formatEMVField('52', PIX_CONFIG.merchantCategoryCode);
+  // Merchant Category Code (obrigatório)
+  payload += formatEMVField('52', '0000');
   
-  // Transaction Currency
-  payload += formatEMVField('53', PIX_CONFIG.currency);
+  // Transaction Currency (986 = BRL)
+  payload += formatEMVField('53', '986');
   
-  // Transaction Amount
-  payload += formatEMVField('54', valor);
+  // Transaction Amount (formato: 5.00)
+  const valorFormatado = parseFloat(valor).toFixed(2);
+  payload += formatEMVField('54', valorFormatado);
   
-  // Country Code
-  payload += formatEMVField('58', PIX_CONFIG.countryCode);
+  // Country Code (obrigatório)
+  payload += formatEMVField('58', 'BR');
   
-  // Merchant Name
-  payload += formatEMVField('59', PIX_CONFIG.merchantName);
+  // Merchant Name (máximo 25 caracteres)
+  const merchantName = PIX_CONFIG.merchantName.substring(0, 25);
+  payload += formatEMVField('59', merchantName);
   
-  // Merchant City
-  payload += formatEMVField('60', PIX_CONFIG.merchantCity);
+  // Merchant City (máximo 15 caracteres)
+  const merchantCity = PIX_CONFIG.merchantCity.substring(0, 15);
+  payload += formatEMVField('60', merchantCity);
   
   // Additional Data Field Template (txid)
   if (txid) {
-    let additionalData = formatEMVField('05', txid);
+    const txidLimitado = txid.substring(0, 25);
+    let additionalData = formatEMVField('05', txidLimitado);
     payload += formatEMVField('62', additionalData);
   }
   
@@ -110,6 +123,14 @@ function gerarCodigoEMVPix(valor, txid, descricao) {
   // Calcular e adicionar CRC16 real
   const crc = calculateCRC16(payload);
   payload = payload.slice(0, -4) + crc;
+  
+  console.log('🔍 DEBUG EMV PIX:');
+  console.log('  Valor original:', valor);
+  console.log('  Valor formatado:', valorFormatado);
+  console.log('  TXID:', txid);
+  console.log('  Descrição:', descricaoLimitada);
+  console.log('  Payload completo:', payload);
+  console.log('  Tamanho payload:', payload.length);
   
   return payload;
 }
@@ -1461,6 +1482,52 @@ router.post('/simular-pagamento-pix', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Erro ao simular pagamento',
+      error: error.message
+    });
+  }
+});
+
+// GET /api/testar-pix - Endpoint para testar geração de PIX
+router.get('/testar-pix', async (req, res) => {
+  try {
+    console.log('🧪 Testando geração de PIX...');
+    
+    const valor = '5.00';
+    const txid = 'TEST123';
+    const descricao = 'Teste de PIX';
+    
+    // Gerar código EMV
+    const codigoEMV = gerarCodigoEMVPix(valor, txid, descricao);
+    
+    // Gerar QR Code URL
+    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(codigoEMV)}`;
+    
+    console.log('✅ PIX de teste gerado com sucesso!');
+    
+    res.json({
+      success: true,
+      message: 'PIX de teste gerado com sucesso!',
+      dados: {
+        valor: valor,
+        txid: txid,
+        descricao: descricao,
+        codigoEMV: codigoEMV,
+        qrCodeUrl: qrCodeUrl,
+        tamanhoEMV: codigoEMV.length,
+        validacoes: {
+          comecaComZero: codigoEMV.startsWith('00'),
+          temFormatoCorreto: codigoEMV.length >= 100,
+          temCRC: codigoEMV.includes('6304'),
+          ultimosQuatroCaracteres: codigoEMV.slice(-4)
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao testar PIX:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao testar PIX',
       error: error.message
     });
   }
